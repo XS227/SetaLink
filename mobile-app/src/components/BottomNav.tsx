@@ -1,20 +1,20 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
-import { useInboxStore } from '../stores/inboxStore';
-import { useDMStore } from '../stores/dmStore';
 
-export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile';
+export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile' | 'game';
 
 type NavItem = { key: NavTab; icon: string };
 
 // AI + Activity were demoted (v0.9.41): Activity lives under Servers, the smart-connect
-// engine runs under the hood with its controls under Settings. Bottom bar = 3 tabs.
+// engine runs under the hood with its controls under Settings.
+// B-22: Profile swapped out for Game — Profile is still reachable via TopBar's
+// profile icon on every screen, so dropping it from the footer costs nothing.
 const TAB_KEYS: NavItem[] = [
   { key: 'home',     icon: '⬡' },
   { key: 'servers',  icon: '◈' },
-  { key: 'profile',  icon: '○' },
+  { key: 'game',     icon: '⚔' },
 ];
 
 interface Props {
@@ -24,33 +24,17 @@ interface Props {
 
 export function BottomNav({ active, onPress }: Props) {
   const { t } = useT();
-  // Unread = admin broadcasts (inboxStore) + direct messages (dmStore) — the
-  // badge must light up for BOTH, DMs were invisible here before.
-  const unreadOfficial = useInboxStore((s) => s.messages.filter(m => !m.read).length);
-  const unreadDm       = useDMStore((s) => s.messages.filter(m => m.direction === 'in' && !m.read).length);
-  const unread         = unreadOfficial + unreadDm;
 
-  // Heartbeat pulse on the badge while something is unread — quiet but alive.
-  const pulse = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    if (unread <= 0) { pulse.setValue(1); return; }
-    const beat = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.25, duration: 380, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1,    duration: 380, useNativeDriver: true }),
-        Animated.delay(900),
-      ]),
-    );
-    beat.start();
-    return () => beat.stop();
-  }, [unread > 0]); // eslint-disable-line react-hooks/exhaustive-deps
-
+  // Unread badge (admin broadcasts + DMs) moved with Profile off the footer —
+  // TopBar already renders an independent inbox badge on every screen, so it
+  // isn't duplicated here.
   const LABEL_KEYS: Record<NavTab, Parameters<typeof t>[0]> = {
     home:     'nav.home',
     servers:  'nav.servers',
     ai:       'nav.ai',
     activity: 'nav.activity',
     profile:  'nav.profile',
+    game:     'nav.game',
   };
 
   return (
@@ -81,16 +65,9 @@ export function BottomNav({ active, onPress }: Props) {
               onPress={() => onPress(tab.key)}
               activeOpacity={0.7}
             >
-              <View>
-                <Text style={[styles.icon, isActive && styles.activeIcon]}>
-                  {tab.icon}
-                </Text>
-                {tab.key === 'profile' && unread > 0 && (
-                  <Animated.View style={[styles.badge, { transform: [{ scale: pulse }] }]}>
-                    <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
-                  </Animated.View>
-                )}
-              </View>
+              <Text style={[styles.icon, isActive && styles.activeIcon]}>
+                {tab.icon}
+              </Text>
               <Text style={[styles.label, isActive && styles.activeLabel]}>
                 {t(LABEL_KEYS[tab.key])}
               </Text>
@@ -152,23 +129,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.emerald[400],
     position: 'absolute',
     bottom: -6,
-  },
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -10,
-    minWidth: 15,
-    height: 15,
-    borderRadius: 8,
-    paddingHorizontal: 3,
-    backgroundColor: '#FF5050',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: {
-    fontSize: 9,
-    fontFamily: Typography.family.label,
-    color: '#FFFFFF',
   },
   // AI center button — elevated pill
   aiButton: {

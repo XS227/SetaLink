@@ -7,8 +7,8 @@ import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { ServerRow } from '../components/ServerRow';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { GlassCard } from '../components/GlassCard';
-import { EcosystemBanner } from '../components/EcosystemBanner';
-import { WatchAdCard } from '../components/WatchAdCard';
+import { AdBanner } from '../components/AdBanner';
+import { TopBar } from '../components/TopBar';
 
 import { useServerStore, FILTER_TABS, FilterTab, COMING_SOON_SERVERS } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
@@ -109,6 +109,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
             <View style={styles.countBadge}>
               <Text style={styles.countText}>{servers.length} {t('sv.locations')}</Text>
             </View>
+            <TopBar onNavigate={onNavigate as (tab: string) => void} />
           </View>
         </View>
 
@@ -160,12 +161,11 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                   onSelect={(sv) => handleSelectServer(sv.id)}
                   onDelete={undefined}
                 />
-                {/* Banners interleaved at fixed positions:
-                    after server 1 → watch-ad (free quota),
-                    after server 3 → Shahnameh, after server 4 → 3real. */}
-                {i === 0 && <WatchAdCard style={styles.ecoBanner} />}
-                {i === 2 && <EcosystemBanner pin="shahnameh" onOpenGame={() => (onNavigate as (tab: string) => void)('game')} style={styles.ecoBanner} />}
-                {i === 3 && <EcosystemBanner pin="threereal" style={styles.ecoBanner} />}
+                {/* B-19: Servers gets exactly one AdMob banner (after the
+                    first row) — the rewarded-video card and the ecosystem
+                    cross-promos that used to interleave here were "internal
+                    banners"; that surface now belongs to Home only. */}
+                {i === 0 && <AdBanner show={userPlan === 'free'} style={styles.ecoBanner} />}
               </React.Fragment>
             ))
           )}

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share, Linking,
-  Modal, ActivityIndicator, Image,
+  Modal, ActivityIndicator,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
@@ -12,18 +12,20 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
 import { useVpnStore }     from '../stores/vpnStore';
-import { formatBytes } from '../utils/formatters';
+import { formatBytes, prettyPackageName } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
 import { useReferral, syncEntitlement } from '../services/entitlementService';
 import { WatchAdCard } from '../components/WatchAdCard';
+import { TopBar } from '../components/TopBar';
+import { CommunityRankCard } from '../components/CommunityRankCard';
+import { EcosystemFooter } from '../components/EcosystemFooter';
 import { RealWalletCard } from '../components/RealWalletCard';
+import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
+import { IdentityHeader } from '../components/IdentityHeader';
 import { getCachedConfig } from '../services/remoteConfigService';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore } from '../stores/dmStore';
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const LOGO_MARK = require('../assets/logo_mark.png') as number;
 
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
@@ -324,12 +326,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>{t('pr.title')}</Text>
-          <TouchableOpacity
-            style={styles.settingsBtn}
-            onPress={() => onNavigate('settings' as NavTab)}
-          >
-            <Text style={styles.settingsIcon}>⚙</Text>
-          </TouchableOpacity>
+          <TopBar onNavigate={onNavigate as (tab: string) => void} />
         </View>
 
         {/* Pending referral banner */}
@@ -357,16 +354,52 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           </GlassCard>
         )}
 
-        {/* Brand header — logo replaces the old SL initials circle */}
-        <View style={styles.brandHeader}>
-          <View style={styles.brandLogoRing}>
-            <Image source={LOGO_MARK} style={styles.brandLogo} resizeMode="contain" />
+        {/* Identity header (A-11) — avatar + @handle + nickname, tap to edit */}
+        <IdentityHeader seedId={user.deviceId} fallbackId={primaryId} planLabel={planLabel} />
+
+        {/* Referral & community — B-21 declutter: ONE section (code + invitees
+            + TrustAI %) instead of three cards scattered across the screen.
+            Rank tiers (3/6/10) are defined once in
+            CommunityRankCard.RANK_THRESHOLDS — TrustAI's own ambassador tier
+            ladder, not a separate app-invented one. */}
+        <GlassCard style={styles.referralHubCard} glowColor={Colors.gold[400]}>
+          <CommunityRankCard
+            userId={user.userId || primaryId}
+            inviteCount={user.inviteCount}
+            activeInviteCount={user.activeInviteCount}
+            onInvite={handleShareReferral}
+            bare
+            hideInviteBtn
+          />
+
+          <View style={styles.referralHubDivider} />
+
+          <ReferralEarningsDonut deviceId={user.deviceId} onInvite={handleShareReferral} bare hideInviteBtn />
+
+          <View style={styles.referralHubDivider} />
+
+          <View style={styles.referralHeader}>
+            <Text style={styles.cardLabel}>{t('pr.referralCode')}</Text>
+            <View style={styles.rewardBadge}>
+              <Text style={styles.rewardBadgeText}>{t('pr.free30days')}</Text>
+            </View>
           </View>
-          <Text style={styles.brandId} numberOfLines={1}>{primaryId}</Text>
-          <View style={styles.planBadge}>
-            <Text style={styles.planText}>{planLabel}</Text>
+          <Text style={styles.referralDesc}>{t('pr.referDesc')}</Text>
+          <Text style={styles.deviceOs}>{referralLink}</Text>
+          <View style={styles.referralCode}>
+            <Text style={styles.referralCodeText}>{referralDisplayCode}</Text>
+            <TouchableOpacity style={styles.qrBtn} activeOpacity={0.75} onPress={() => setShowQr(true)}>
+              <Text style={styles.qrBtnText}>QR</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyReferral}>
+              <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
+            </TouchableOpacity>
           </View>
-        </View>
+
+          <TouchableOpacity style={styles.shareBtn} activeOpacity={0.8} onPress={handleShareReferral}>
+            <Text style={styles.shareBtnText}>{t('pr.shareLink')}</Text>
+          </TouchableOpacity>
+        </GlassCard>
 
         {/* Subscription card */}
         <GlassCard glowColor={Colors.emerald[400]} style={styles.subCard}>
@@ -515,7 +548,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             <View style={styles.pkgList}>
               {purchasedPackages.map((p) => (
                 <View key={p.id} style={styles.pkgListRow}>
-                  <Text style={styles.pkgListName} numberOfLines={1}>{p.package_name}</Text>
+                  <Text style={styles.pkgListName} numberOfLines={1}>{prettyPackageName(p.package_name)}</Text>
                   <Text style={styles.pkgListBytes}>{gb(p.bytes)}</Text>
                 </View>
               ))}
@@ -566,30 +599,6 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             </View>
           </GlassCard>
         </TouchableOpacity>
-
-        {/* Referral */}
-        <GlassCard style={styles.referralCard} glowColor={Colors.blue[400]}>
-          <View style={styles.referralHeader}>
-            <Text style={styles.cardLabel}>{t('pr.referralCode')}</Text>
-            <View style={styles.rewardBadge}>
-              <Text style={styles.rewardBadgeText}>{t('pr.free30days')}</Text>
-            </View>
-          </View>
-          <Text style={styles.referralDesc}>{t('pr.referDesc')}</Text>
-          <Text style={styles.deviceOs}>{referralLink}</Text>
-          <View style={styles.referralCode}>
-            <Text style={styles.referralCodeText}>{referralDisplayCode}</Text>
-            <TouchableOpacity style={styles.qrBtn} activeOpacity={0.75} onPress={() => setShowQr(true)}>
-              <Text style={styles.qrBtnText}>QR</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyReferral}>
-              <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity style={styles.shareBtn} activeOpacity={0.8} onPress={handleShareReferral}>
-            <Text style={styles.shareBtnText}>{t('pr.shareLink')}</Text>
-          </TouchableOpacity>
-        </GlassCard>
 
         {/* Invite reward milestones */}
         <GlassCard style={styles.msCard}>
@@ -674,6 +683,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             <Text style={styles.footerLink}>https://setalink.no</Text>
           </TouchableOpacity>
           <Text style={styles.footerCopy}>© 2026 Realink. {t('st.allRights')}</Text>
+          <EcosystemFooter />
         </GlassCard>
 
         {/* Sign out */}
@@ -773,7 +783,9 @@ const styles = StyleSheet.create({
   inboxBadge:       { backgroundColor: 'rgba(255,80,80,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,80,80,0.35)', paddingHorizontal: Spacing[2], paddingVertical: 2 },
   inboxBadgeText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FF5050' },
 
-  referralCard:     { gap: Spacing[3] },
+  // B-21: one merged referral/community card (rank + earnings donut + code)
+  referralHubCard:    { gap: Spacing[3] },
+  referralHubDivider: { height: 1, backgroundColor: Colors.border.subtle },
   referralHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rewardBadge:      { backgroundColor: 'rgba(51,153,255,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(51,153,255,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 3 },
   rewardBadgeText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.blue[400] },

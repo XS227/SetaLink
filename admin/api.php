@@ -43,6 +43,52 @@ function cli_json(string $action, array $args = [], int $timeout = 0): array {
     $j = json_decode($r['output'], true);
     return is_array($j) ? $j : ['_error' => 'unparseable cli output'];
 }
+// SEO keyword rank tracking: one row per keyword per measurement date. Lower
+// position = better; NULL = not measured / outside top 100.
+function seo_ranks_init(PDO $db): void {
+    $db->exec('CREATE TABLE IF NOT EXISTS keyword_ranks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        keyword TEXT NOT NULL,
+        lang TEXT DEFAULT "fa",
+        position REAL,
+        impressions INTEGER DEFAULT 0,
+        clicks INTEGER DEFAULT 0,
+        source TEXT DEFAULT "manual",
+        captured_at TEXT NOT NULL DEFAULT (datetime("now"))
+    )');
+    $db->exec('CREATE INDEX IF NOT EXISTS kr_kw ON keyword_ranks(keyword, captured_at)');
+    // Seed the default target list the first time so the page is never empty.
+    $has = (int)$db->query('SELECT COUNT(*) FROM keyword_ranks')->fetchColumn();
+    if ($has === 0) seo_ranks_seed($db);
+}
+// The 10 target search terms (Persian filtershekan intent = Iran's real queries).
+// Seeds a marker row (position NULL) per keyword so it shows as tracked before
+// any measurement exists. Idempotent — only inserts keywords not already present.
+function seo_ranks_seed(PDO $db): int {
+    $targets = [
+        ['فیلترشکن', 'fa'],
+        ['فیلترشکن رایگان', 'fa'],
+        ['دانلود فیلترشکن', 'fa'],
+        ['فیلترشکن قوی', 'fa'],
+        ['فیلترشکن پرسرعت', 'fa'],
+        ['بهترین فیلترشکن', 'fa'],
+        ['فیلترشکن بدون قطعی', 'fa'],
+        ['فیلترشکن اندروید', 'fa'],
+        ['فیلترشکن آیفون', 'fa'],
+        ['V2Ray ایران', 'fa'],
+    ];
+    $exists = $db->prepare('SELECT 1 FROM keyword_ranks WHERE keyword=? LIMIT 1');
+    $ins = $db->prepare('INSERT INTO keyword_ranks (keyword,lang,position,source) VALUES (?,?,NULL,"seed")');
+    $added = 0;
+    foreach ($targets as [$kw, $lg]) {
+        $exists->execute([$kw]);
+        if (!$exists->fetchColumn()) { $ins->execute([$kw, $lg]); $added++; }
+    }
+    return $added;
+}
+
+require_once __DIR__ . '/gsc_sync.php';  // Google Search Console → keyword_ranks
+
 function open_analytics_db(): PDO {
     $db = new PDO('sqlite:' . realpath(__DIR__ . '/../data') . '/analytics.db', null, null,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
@@ -785,6 +831,174 @@ if ($method === 'POST') {
             api_ok(['allowed' => false, 'device_id' => $did, 'node_id' => $nid]);
         }
     }
+    // Starlink exit-node admin controls (Phase 1 — single test node, disabled
+    // by default). Every mutation is logged to starlink_admin_log for audit
+    // (docs/CLAUDE_REALINK_RULES.md Rule 3: admin visibility for new network
+    // features). Device allowlisting reuses node-allowlist-add/remove above —
+    // a Starlink node is just another node_id there.
+    if (in_array($action, [
+        'starlink-toggle-enabled', 'starlink-set-maintenance', 'starlink-force-fallback',
+        'starlink-generate-token', 'starlink-update-node',
+    ], true)) {
+        require_once __DIR__ . '/../lib/starlink.php';
+        $db  = open_analytics_db();
+        st_init_tables($db);
+        $nid = trim((string)($parsed['node_id'] ?? 'starlink-no-01'));
+        $node = st_get($db, $nid);
+        if (!$node) api_err('unknown starlink node', 404);
+
+        if ($action === 'starlink-toggle-enabled') {
+            $enabled = !empty($parsed['enabled']) ? 1 : 0;
+            $db->prepare("UPDATE starlink_nodes SET enabled=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute([$enabled, $nid]);
+            st_log($db, $nid, $auth_user, $enabled ? 'enable' : 'disable');
+            api_ok(['node_id' => $nid, 'enabled' => (bool)$enabled]);
+        }
+        if ($action === 'starlink-set-maintenance') {
+            $maint = !empty($parsed['maintenance']) ? 1 : 0;
+            $db->prepare("UPDATE starlink_nodes SET maintenance_mode=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute([$maint, $nid]);
+            st_log($db, $nid, $auth_user, $maint ? 'maintenance-on' : 'maintenance-off');
+            api_ok(['node_id' => $nid, 'maintenance_mode' => (bool)$maint]);
+        }
+        if ($action === 'starlink-force-fallback') {
+            // Stop routing new sessions here immediately without removing the
+            // node from the catalog — marks the tunnel down so health policy
+            // (st_health_state) reports OFFLINE until the next real heartbeat.
+            $db->prepare("UPDATE starlink_nodes SET tunnel_status='down', last_error=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute(['forced fallback by admin', $nid]);
+            st_log($db, $nid, $auth_user, 'force-fallback');
+            api_ok(['node_id' => $nid, 'forced' => true]);
+        }
+        if ($action === 'starlink-generate-token') {
+            // Returned ONCE in plaintext — only the hash is persisted. The
+            // admin must copy it into the gateway's heartbeat script now.
+            $secret = st_generate_heartbeat_token($db, $nid);
+            st_log($db, $nid, $auth_user, 'rotate-heartbeat-token');
+            api_ok(['node_id' => $nid, 'heartbeat_token' => "starlink-node-{$nid}:{$secret}"]);
+        }
+        if ($action === 'starlink-update-node') {
+            $displayName = trim((string)($parsed['display_name']  ?? $node['display_name']));
+            $uuid        = trim((string)($parsed['vless_uuid']    ?? $node['vless_uuid']));
+            $maxSessions = max(0, (int)($parsed['max_sessions']   ?? $node['max_sessions']));
+            $allocKbps   = max(0, (int)($parsed['allocated_kbps'] ?? $node['allocated_kbps']));
+            $db->prepare("UPDATE starlink_nodes SET display_name=?, vless_uuid=?, max_sessions=?, allocated_kbps=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute([$displayName, $uuid, $maxSessions, $allocKbps, $nid]);
+            st_log($db, $nid, $auth_user, 'update-config');
+            api_ok(['node_id' => $nid]);
+        }
+    }
+    // The VPS-side WireGuard peer info handed back by starlink-enroll.php —
+    // same settings-table convention as real_link_secret/real_api_key
+    // (INSERT OR REPLACE), not a new config mechanism. Set this once the
+    // rendezvous point is stable; re-run it if the rendezvous ever moves
+    // again (it already has once — see docs/STARLINK_WINDOWS_HANDOFF.md §13).
+    if ($action === 'starlink-set-wg-peer') {
+        $db = open_analytics_db();
+        $endpoint  = trim((string)($parsed['wg_endpoint']    ?? ''));
+        $publicKey = trim((string)($parsed['wg_public_key']  ?? ''));
+        if ($endpoint === '' || $publicKey === '') api_err('wg_endpoint and wg_public_key both required', 400);
+        $st = $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))");
+        $st->execute(['starlink_wg_endpoint', $endpoint]);
+        $st->execute(['starlink_wg_public_key', $publicKey]);
+        require_once __DIR__ . '/../lib/starlink.php';
+        st_log($db, '(settings)', $auth_user, 'set-wg-peer', "endpoint={$endpoint}");
+        api_ok(['wg_endpoint' => $endpoint, 'wg_public_key' => $publicKey]);
+    }
+    // Adaptive Routing feature flag + policy bonuses, and Node Console
+    // command enqueue. These were originally (mis)placed in the GET-only
+    // switch further down in this file -- the switch at "── Admin GET ──"
+    // is ONLY reached via $_GET['action'] and is never hit by a POST
+    // request (every POST either matches an earlier `if ($action === ...)`
+    // block here, or hits the `$allowed` cli-action catch-all's
+    // api_err('unknown action') a few hundred lines down and exits first).
+    // A state-changing action living only in the GET switch is reachable
+    // solely via a plain, CSRF-unprotected GET request -- moved here so
+    // they get the same $csrf_token check as everything else in this
+    // block, and read from $parsed (the JSON body) instead of $_POST
+    // (which is never populated for a JSON request body).
+    //
+    // RULE 7 (docs/CLAUDE_REALINK_RULES.md): routing-toggle is the ONLY
+    // place that can turn Adaptive Routing on — nothing in
+    // lib/node_intel.php or public/v1.php ever flips this setting itself.
+    if ($action === 'routing-toggle') {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $enabled = ((string)($parsed['enabled'] ?? '0')) === '1' ? '1' : '0';
+        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('adaptive_routing_enabled',?,datetime('now'))")
+            ->execute([$enabled]);
+        api_ok(['adaptive_routing_enabled' => $enabled === '1']);
+    }
+    // Set (or clear, with bonus=0) a policy bonus for one node or a whole
+    // node_type class — see ni_policy_bonus(). {node_id or node_type, bonus}
+    if ($action === 'routing-set-bonus') {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $nodeId   = trim((string)($parsed['node_id']   ?? ''));
+        $nodeType = trim((string)($parsed['node_type'] ?? ''));
+        $bonus    = (float)($parsed['bonus'] ?? 0);
+        if ($nodeId === '' && $nodeType === '') api_err('node_id or node_type required', 400);
+        $key = $nodeId !== '' ? "node_policy_bonus_{$nodeId}" : "node_policy_bonus_type_{$nodeType}";
+        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))")
+            ->execute([$key, $bonus]);
+        api_ok(['key' => $key, 'bonus' => $bonus]);
+    }
+    // Node Console (Phase 1) — see docs/NODE_CONSOLE_ARCHITECTURE.md and
+    // lib/node_console.php. Trust boundary today is the same single-tier
+    // admin session ($auth_user) as every other action in this file —
+    // true Owner/Admin role separation is explicitly not built yet.
+    // {node_id, command_key, confirmed?, confirmed_twice?}
+    if ($action === 'node-command-enqueue') {
+        require_once __DIR__ . '/../lib/starlink.php';
+        require_once __DIR__ . '/../lib/node_console.php';
+        $db = open_analytics_db();
+        st_init_tables($db);
+        nc_init_tables($db);
+        $nodeId     = trim((string)($parsed['node_id']     ?? ''));
+        $commandKey = trim((string)($parsed['command_key'] ?? ''));
+        $confirmed  = (string)($parsed['confirmed'] ?? '') === '1';
+        if ($nodeId === '' || $commandKey === '') api_err('node_id and command_key required', 400);
+
+        $node = st_get($db, $nodeId);
+        if (!$node) api_err('unknown node', 404);
+        $nodeType = strtolower((string)($node['node_type'] ?? 'starlink'));
+
+        $entry = NC_COMMAND_REGISTRY[$commandKey] ?? null;
+        if (!$entry) api_err('unknown command_key', 400);
+        if ($entry['confirm'] !== 'none' && !$confirmed) {
+            api_err('this command requires confirmation (confirmed=1)', 400);
+        }
+        // Phase 1 registry has no 'double'-confirm entries yet, but enforce
+        // the distinction now so adding one later doesn't need new plumbing.
+        if ($entry['confirm'] === 'double' && (string)($parsed['confirmed_twice'] ?? '') !== '1') {
+            api_err('this command requires double confirmation', 400);
+        }
+
+        $result = nc_enqueue_command($db, $nodeId, $nodeType, $commandKey, $auth_user);
+        if (!$result) api_err('command not available for this node type', 400);
+        api_ok($result);
+    }
+    // Phase 2: self-registration. Separate from the block above because this
+    // action runs BEFORE a node_id exists — it's what creates one. Manual
+    // provisioning (the block above) still works unchanged; this is an
+    // additional path for a brand-new gateway device.
+    if ($action === 'starlink-create-enrollment-token') {
+        require_once __DIR__ . '/../lib/starlink.php';
+        $db = open_analytics_db();
+        st_init_tables($db);
+        $displayName = trim((string)($parsed['display_name'] ?? ''));
+        $country     = trim((string)($parsed['country'] ?? '')) ?: 'Norway';
+        // Shown ONCE in plaintext, same convention as starlink-generate-token
+        // above — only its SHA-256 is persisted (see st_create_enrollment_token()
+        // for why this is a fast hash, unlike the heartbeat token).
+        $token = st_create_enrollment_token($db, $auth_user, $displayName, $country);
+        api_ok([
+            'enrollment_token' => $token,
+            'expires_in'       => STARLINK_ENROLLMENT_TTL_SECS,
+        ]);
+    }
     if ($action === 'send-message') {
         // In-app message to one device ('' target = broadcast to all).
         // No real push transport exists (no FCM): clients poll get-messages
@@ -822,6 +1036,25 @@ if ($method === 'POST') {
         // Keep the ledger invariant after a direct quota write.
         try { qe_reconcile($db, $did, 'admin set-quota'); } catch (Exception $e) {}
         api_ok(['quota_bytes_total' => $quota]);
+    }
+
+    if ($action === 'device-set-test-mode') {
+        // Marks a device as a TEST account, orthogonal to `plan` (Khabat,
+        // 2026-07-16): a premium tester keeps unlimited quota but test-gated
+        // functionality treats her like a tester — ads stay visible during a
+        // test period (client-side, once ad gating reads test_mode) and
+        // Starlink nodes auto-allow (v1_device_allowed()). Deliberately NOT a
+        // plan downgrade — that would also cost the device its quota.
+        $did  = trim((string)($parsed['device_id'] ?? ''));
+        $mode = (int)($parsed['test_mode'] ?? 0) === 1 ? 1 : 0;
+        if (!$did) api_err('device_id required');
+        $db = open_analytics_db();
+        init_device_tables($db);
+        try { $db->exec("ALTER TABLE devices ADD COLUMN test_mode INTEGER DEFAULT 0"); } catch (Exception $e) {}
+        $st = $db->prepare("UPDATE devices SET test_mode=? WHERE device_id=?");
+        $st->execute([$mode, $did]);
+        if ($st->rowCount() === 0) api_err('device not found', 404);
+        api_ok(['device_id' => $did, 'test_mode' => $mode === 1]);
     }
 
     if ($action === 'credit-package') {
@@ -1300,6 +1533,53 @@ if ($method === 'POST') {
         file_put_contents($vj_path, json_encode($current, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         api_ok(['saved' => true, 'version' => $current['version'] ?? '?']);
     }
+    // SEO rank tracker — record a snapshot of keyword positions (manual entry
+    // or a future GSC feed). { entries:[{keyword,position,lang?,impressions?,clicks?}], source?, captured_at? }
+    if ($action === 'seo-rank-record') {
+        $db = open_analytics_db();
+        seo_ranks_init($db);
+        $entries = $parsed['entries'] ?? [];
+        if (!is_array($entries) || !$entries) api_err('no entries');
+        $src = substr((string)($parsed['source'] ?? 'manual'), 0, 30);
+        $cap = (string)($parsed['captured_at'] ?? date('Y-m-d H:i:s'));
+        $ins = $db->prepare("INSERT INTO keyword_ranks (keyword,lang,position,impressions,clicks,source,captured_at)
+                             VALUES (?,?,?,?,?,?,?)");
+        $n = 0;
+        foreach ($entries as $e) {
+            $kw = trim((string)($e['keyword'] ?? ''));
+            if ($kw === '') continue;
+            $pos = (isset($e['position']) && $e['position'] !== '' && $e['position'] !== null) ? (float)$e['position'] : null;
+            $ins->execute([$kw, substr((string)($e['lang'] ?? 'fa'),0,5), $pos,
+                           (int)($e['impressions'] ?? 0), (int)($e['clicks'] ?? 0), $src, $cap]);
+            $n++;
+        }
+        api_ok(['recorded' => $n, 'captured_at' => $cap]);
+    }
+    // (Re)seed the tracked keyword list (idempotent).
+    if ($action === 'seo-rank-seed') {
+        $db = open_analytics_db();
+        seo_ranks_init($db);
+        api_ok(['added' => seo_ranks_seed($db)]);
+    }
+    // Pull real positions from Google Search Console into keyword_ranks.
+    if ($action === 'seo-rank-gsc-sync') {
+        $db = open_analytics_db();
+        if (!gsc_key_present()) {
+            api_err('Search Console key not installed yet. Upload the service-account JSON to '
+                  . GSC_KEY_PATH . ' and add its e-mail as a user in Search Console.');
+        }
+        try { api_ok(gsc_sync($db)); }
+        catch (\Throwable $e) { api_err('GSC sync failed: ' . $e->getMessage()); }
+    }
+    // Set the Search Console property URL (https://setalink.no/ or sc-domain:setalink.no).
+    if ($action === 'seo-rank-gsc-config') {
+        $db = open_analytics_db();
+        $u = trim((string)($parsed['site_url'] ?? ''));
+        if ($u === '') api_err('site_url required');
+        gsc_setting($db, 'gsc_site_url', $u);
+        api_ok(['site_url' => $u]);
+    }
+
     $allowed = ['add','remove','disable','enable','reset-traffic','change-package','regen-link'];
     if (!in_array($action, $allowed, true)) api_err('unknown action');
     if (!preg_match(USERNAME_RE, $name))    api_err('invalid username');
@@ -1337,6 +1617,117 @@ switch ($action) {
     case 'server-stats':        api_ok(cli_json('server-stats', [], 8)); break;
     case 'connection-analytics': api_ok(cli_json('connection-analytics', [], 8)); break;
 
+    // Aggregate, privacy-safe user insights for the dashboard. NO per-user
+    // destination logging: "category reachability" comes from the app's own
+    // connectivity probes (probe_* in connect_telemetry), and "carrier" is the
+    // ASN-derived operator name (never the raw IP).
+    case 'user-insights': {
+        $db   = open_analytics_db();
+        $days = max(1, min(90, (int)($_GET['days'] ?? 30)));
+        $since = "datetime('now', '-" . $days . " days')";
+        $q = function (string $sql) use ($db) {
+            try { return $db->query($sql)->fetchAll(PDO::FETCH_ASSOC); }
+            catch (\Throwable $e) { return []; }
+        };
+        $carriers = $q("SELECT COALESCE(NULLIF(carrier,''),'(unknown)') AS carrier, COUNT(*) AS devices
+                        FROM devices GROUP BY carrier ORDER BY devices DESC LIMIT 20");
+        $geo = $q("SELECT COALESCE(NULLIF(country,''),'?') AS country, COUNT(*) AS devices
+                   FROM devices GROUP BY country ORDER BY devices DESC LIMIT 20");
+        $platforms = $q("SELECT COALESCE(NULLIF(platform,''),'?') AS platform, COUNT(*) AS devices
+                         FROM devices GROUP BY platform ORDER BY devices DESC");
+        $brands = $q("SELECT COALESCE(NULLIF(manufacturer,''),'?') AS brand, COUNT(*) AS devices
+                      FROM devices GROUP BY manufacturer ORDER BY devices DESC LIMIT 10");
+        $plans = $q("SELECT plan, COUNT(*) AS devices FROM devices GROUP BY plan ORDER BY devices DESC");
+        $longest = $q("SELECT substr(device_id,1,16) AS device, COALESCE(NULLIF(protocol,''),'?') AS protocol,
+                              duration_secs, ROUND((bytes_sent+bytes_recv)/1048576.0,1) AS mb, date(ended_at) AS day
+                       FROM vpn_sessions ORDER BY duration_secs DESC LIMIT 10");
+        $protocols = $q("SELECT COALESCE(NULLIF(protocol,''),'?') AS protocol, COUNT(*) AS sessions,
+                                ROUND(SUM(bytes_sent+bytes_recv)/1073741824.0,2) AS gb
+                         FROM vpn_sessions GROUP BY protocol ORDER BY sessions DESC");
+        $nodes = $q("SELECT node_id, COUNT(*) AS connects FROM connect_telemetry
+                     WHERE created_at >= " . $since . " GROUP BY node_id ORDER BY connects DESC LIMIT 12");
+        $reach = $q("SELECT
+              ROUND(100.0*AVG(CASE WHEN probe_instagram IN (0,1) THEN probe_instagram END),0)  AS instagram,
+              ROUND(100.0*AVG(CASE WHEN probe_telegram  IN (0,1) THEN probe_telegram  END),0)  AS telegram,
+              ROUND(100.0*AVG(CASE WHEN probe_google    IN (0,1) THEN probe_google    END),0)  AS google,
+              ROUND(100.0*AVG(CASE WHEN probe_cloudflare IN (0,1) THEN probe_cloudflare END),0) AS cloudflare,
+              ROUND(100.0*AVG(CASE WHEN probe_apple     IN (0,1) THEN probe_apple     END),0)  AS apple
+            FROM connect_telemetry WHERE created_at >= " . $since);
+        $totals = $q("SELECT
+              (SELECT COUNT(*) FROM devices) AS total_devices,
+              (SELECT COUNT(*) FROM devices WHERE last_seen >= datetime('now','-1 day'))  AS active_24h,
+              (SELECT COUNT(*) FROM devices WHERE last_seen >= datetime('now','-7 days')) AS active_7d,
+              (SELECT COUNT(*) FROM devices WHERE plan='premium') AS premium,
+              (SELECT ROUND(SUM(bytes_sent+bytes_recv)/1073741824.0,1) FROM vpn_sessions) AS total_gb,
+              (SELECT MAX(duration_secs) FROM vpn_sessions) AS longest_secs");
+        api_ok([
+            'days'         => $days,
+            'totals'       => $totals[0] ?? new \stdClass(),
+            'carriers'     => $carriers,
+            'geo'          => $geo,
+            'platforms'    => $platforms,
+            'brands'       => $brands,
+            'plans'        => $plans,
+            'longest'      => $longest,
+            'protocols'    => $protocols,
+            'nodes'        => $nodes,
+            'reachability' => $reach[0] ?? new \stdClass(),
+        ]);
+        break;
+    }
+
+    // ── SEO keyword rank tracker ────────────────────────────────────────────
+    // Track where target search terms rank over time so the owner can compare
+    // positions across dates. Positions are recorded as snapshots (manual entry
+    // now; can be fed from the Google Search Console API later). Lower = better;
+    // position 0/NULL means "not measured / not in top 100".
+    case 'seo-ranks': {
+        $db = open_analytics_db();
+        seo_ranks_init($db);
+        // History per keyword + latest/previous/best for the summary table.
+        $rows = $db->query(
+            "SELECT keyword, lang, position, impressions, clicks, source, captured_at
+             FROM keyword_ranks WHERE position IS NOT NULL
+             ORDER BY keyword, captured_at"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $targets = $db->query("SELECT DISTINCT keyword, lang FROM keyword_ranks ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+        $hist = [];
+        foreach ($rows as $r) {
+            $hist[$r['keyword']][] = ['captured_at' => $r['captured_at'], 'position' => (float)$r['position']];
+        }
+        $out = [];
+        foreach ($targets as $t) {
+            $k = $t['keyword'];
+            $h = $hist[$k] ?? [];
+            $n = count($h);
+            $latest = $n ? $h[$n-1]['position'] : null;
+            $prev   = $n > 1 ? $h[$n-2]['position'] : null;
+            $best   = null;
+            foreach ($h as $p) { if ($best === null || $p['position'] < $best) $best = $p['position']; }
+            $out[] = [
+                'keyword'    => $k,
+                'lang'       => $t['lang'],
+                'latest'     => $latest,
+                'previous'   => $prev,
+                'delta'      => ($latest !== null && $prev !== null) ? round($prev - $latest, 1) : null, // +ve = improved (moved up)
+                'best'       => $best,
+                'last_at'    => $n ? $h[$n-1]['captured_at'] : null,
+                'points'     => $n,
+                'history'    => $h,
+            ];
+        }
+        api_ok([
+            'keywords'   => $out,
+            'checked_at' => date('Y-m-d H:i:s'),
+            'gsc'        => [
+                'key_present' => gsc_key_present(),
+                'site_url'    => gsc_setting($db, 'gsc_site_url', null, 'https://setalink.no/'),
+                'last_sync'   => gsc_setting($db, 'gsc_last_sync', null, ''),
+            ],
+        ]);
+        break;
+    }
+
     // Multi-node visibility: which device is using which node + the test allowlist.
     case 'node-usage': {
         $db = open_analytics_db();
@@ -1355,6 +1746,29 @@ switch ($action) {
             )->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {}
         api_ok(['usage' => $usage, 'allowlist' => $allow]);
+        break;
+    }
+
+    case 'starlink-list': {
+        require_once __DIR__ . '/../lib/starlink.php';
+        $db = open_analytics_db();
+        st_init_tables($db);
+        $nodes = st_all($db);
+        // Attach live health_state + allowlisted device count (reuses the
+        // existing generic node_allowlist table — see node-allowlist-add above).
+        foreach ($nodes as &$n) {
+            $n['health_state'] = st_health_state($n);
+            unset($n['heartbeat_token_hash']); // never expose, even hashed
+            $st = $db->prepare("SELECT device_id, added_at FROM node_allowlist WHERE node_id = ? ORDER BY added_at DESC");
+            $st->execute([$n['node_id']]);
+            $n['allowlist'] = $st->fetchAll(PDO::FETCH_ASSOC);
+        }
+        unset($n);
+        $log = $db->query("SELECT * FROM starlink_admin_log ORDER BY id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
+        // Phase 2: pending self-enrollment tokens (never the raw token itself
+        // — that's a launch-time secret shown once by starlink-create-enrollment-token).
+        $pendingEnrollments = st_list_pending_enrollments($db);
+        api_ok(['nodes' => $nodes, 'log' => $log, 'pending_enrollments' => $pendingEnrollments]);
         break;
     }
 
@@ -1394,6 +1808,68 @@ switch ($action) {
             'probe_breakdown'     => ni_probe_breakdown($db, $days),
             'recommendations'     => ni_recommendations($db, $days),
         ]);
+        break;
+    }
+
+    // Node Genome + Telemetry Trust + Adaptive Routing + Evolution Layer —
+    // see docs/NODE_INTELLIGENCE_ARCHITECTURE.md. Read-only visibility;
+    // adaptive_routing_enabled is toggled via the dedicated
+    // 'routing-toggle' action below (Rule 7: explicit action, never implicit).
+    case 'node-genome': {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $node = trim((string)($_GET['node'] ?? ''));
+        $recentDecisions = $db->query(
+            "SELECT decision_id, device_id, context_json, predicted_node, selected_node,
+                    outcome_json, created_at, outcome_recorded_at
+               FROM routing_decisions ORDER BY created_at DESC LIMIT 100"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $trustSummary = $db->query(
+            "SELECT COUNT(*) AS devices, AVG(trust_score) AS avg_trust,
+                    SUM(flagged_reports) AS flagged, SUM(total_reports) AS total
+               FROM device_trust"
+        )->fetch(PDO::FETCH_ASSOC) ?: [];
+        api_ok([
+            'genomes'            => $node !== '' ? [$node => ni_node_genome($db, $node)] : ni_all_genomes($db),
+            'routing_enabled'    => ni_adaptive_routing_enabled($db),
+            'routing_weights'    => ni_routing_weights($db),
+            'recent_decisions'   => $recentDecisions,
+            'trust_summary'      => $trustSummary,
+        ]);
+        break;
+    }
+
+    // routing-toggle, routing-set-bonus, node-command-enqueue: moved up to
+    // the CSRF-protected POST if-chain above (search "RULE 7" above) — this
+    // switch is GET-only in practice (see the comment at that new location
+    // for why leaving state-changing actions here was a real CSRF gap).
+
+    // GET ?action=node-command-queue&node_id=<id optional>&limit=50
+    case 'node-command-queue': {
+        require_once __DIR__ . '/../lib/node_console.php';
+        $db = open_analytics_db();
+        nc_init_tables($db);
+        $nodeId = trim((string)($_GET['node_id'] ?? '')) ?: null;
+        $limit  = min(200, max(1, (int)($_GET['limit'] ?? 50)));
+        api_ok([
+            'registry' => NC_COMMAND_REGISTRY,
+            'commands' => nc_recent_commands($db, $nodeId, $limit),
+        ]);
+        break;
+    }
+
+    // GET ?action=node-command-events&node_id=<id optional>&limit=100
+    // The audit trail that also feeds the Network Genome / Telemetry Trust
+    // Engine (lib/node_intel.php's ni_rebuild_genome()) — includes watchdog
+    // self-heals (automatic=1), not just admin-clicked commands.
+    case 'node-command-events': {
+        require_once __DIR__ . '/../lib/node_console.php';
+        $db = open_analytics_db();
+        nc_init_tables($db);
+        $nodeId = trim((string)($_GET['node_id'] ?? '')) ?: null;
+        $limit  = min(500, max(1, (int)($_GET['limit'] ?? 100)));
+        api_ok(nc_recent_events($db, $nodeId, $limit));
         break;
     }
 
@@ -1685,9 +2161,23 @@ switch ($action) {
     case 'iran-debug':
         // Aggregated Iran-specific diagnostics from connect_telemetry.
         $db = open_analytics_db();
-        $ir_where = "country='IR' OR carrier_name LIKE '%Irancell%' OR carrier_name LIKE '%MCI%'
+        // Tunneled telemetry POSTs lose their real country (the geo lookup sees the
+        // VPN exit IP, so country is blanked by design) — and this is an Iran-first
+        // product, so untagged rows are overwhelmingly Iranian testers. Treat
+        // empty-country rows as Iran alongside the geo/carrier-confirmed ones, but
+        // exclude synthetic rows (the ratelimit-test node). Parenthesised so the
+        // AND binds after the OR group when this clause is embedded in other WHEREs.
+        $ir_where = "(country='IR' OR country IS NULL OR country=''
+                     OR carrier_name LIKE '%Irancell%' OR carrier_name LIKE '%MCI%'
                      OR carrier_name LIKE '%Hamrah%' OR carrier_name LIKE '%Rightel%'
-                     OR carrier_name LIKE '%Shatel%' OR carrier_name LIKE '%TCI%'";
+                     OR carrier_name LIKE '%Shatel%' OR carrier_name LIKE '%TCI%')
+                     AND node_id != 'ratelimit-test'";
+
+        // NOTE: connect_telemetry's timestamp column is created_at (NOT
+        // recorded_at, which belongs to test_results), and the table has no
+        // device_id column — telemetry is anonymous by design. Earlier this
+        // block referenced both, so every query threw and the whole Iran Debug
+        // page failed to load. Fixed to created_at + a real internet_ok metric.
 
         // SNI + protocol analysis
         $sni_rows = $db->query(
@@ -1697,7 +2187,7 @@ switch ($action) {
                     SUM(CASE WHEN event!='connect_ok' THEN 1 ELSE 0 END) as fail,
                     AVG(CASE WHEN time_to_connect_ms>0 THEN time_to_connect_ms ELSE NULL END) as avg_latency,
                     AVG(CASE WHEN rtt_ms>0 THEN rtt_ms ELSE NULL END) as avg_rtt,
-                    MAX(recorded_at) as last_seen
+                    MAX(created_at) as last_seen
              FROM connect_telemetry
              WHERE $ir_where
              GROUP BY protocol, sni
@@ -1709,10 +2199,10 @@ switch ($action) {
         $error_rows = $db->query(
             "SELECT protocol, sni, error_category, failure_stage,
                     carrier_name, network_type, ip_version, nat_type,
-                    platform, build_number, recorded_at
+                    platform, build_number, created_at as recorded_at
              FROM connect_telemetry
              WHERE event!='connect_ok' AND ($ir_where)
-             ORDER BY recorded_at DESC
+             ORDER BY created_at DESC
              LIMIT 50"
         )->fetchAll(PDO::FETCH_ASSOC);
 
@@ -1722,7 +2212,7 @@ switch ($action) {
                     COUNT(*) as total,
                     SUM(CASE WHEN event='connect_ok' THEN 1 ELSE 0 END) as success,
                     AVG(CASE WHEN time_to_connect_ms>0 THEN time_to_connect_ms ELSE NULL END) as avg_latency,
-                    MAX(recorded_at) as last_seen
+                    MAX(created_at) as last_seen
              FROM connect_telemetry
              WHERE carrier_name != '' AND ($ir_where)
              GROUP BY carrier_name
@@ -1733,7 +2223,7 @@ switch ($action) {
         // Error category breakdown
         $error_patterns = $db->query(
             "SELECT error_category, failure_stage, COUNT(*) as cnt,
-                    MAX(recorded_at) as last_seen
+                    MAX(created_at) as last_seen
              FROM connect_telemetry
              WHERE event!='connect_ok' AND error_category!='' AND ($ir_where)
              GROUP BY error_category, failure_stage
@@ -1753,14 +2243,16 @@ switch ($action) {
              ORDER BY total DESC"
         )->fetchAll(PDO::FETCH_ASSOC);
 
-        // Overall Iran stats
+        // Overall Iran stats. No device_id in this table → count distinct SNIs
+        // and report internet-failure volume instead of a (nonexistent) device
+        // count, so the summary reflects real telemetry columns.
         $stats = $db->query(
             "SELECT COUNT(*) as total,
                     SUM(CASE WHEN event='connect_ok' THEN 1 ELSE 0 END) as success,
+                    SUM(CASE WHEN internet_ok=0 THEN 1 ELSE 0 END) as no_internet,
                     COUNT(DISTINCT sni) as sni_count,
-                    COUNT(DISTINCT device_id) as device_count,
                     AVG(CASE WHEN rtt_ms>0 THEN rtt_ms ELSE NULL END) as avg_rtt,
-                    MAX(recorded_at) as last_seen
+                    MAX(created_at) as last_seen
              FROM connect_telemetry
              WHERE $ir_where"
         )->fetch(PDO::FETCH_ASSOC);
@@ -2407,6 +2899,66 @@ switch ($action) {
         ]);
         break;
 
+    // ── WALLET (ADMIN_NOC_ROADMAP.md § 1.0 "Wallet" — mangler helt som admin-fane) ──
+    // Aggregates the LOCAL quota ledger (lib/quota_economy.php's
+    // quota_transactions/quota_transfer, SQLite, this panel's own DB) across
+    // ALL devices. Deliberately does NOT attempt to show REAL/ZAR balances —
+    // those live on Shahnameh's separate Mongo backend (season2_users,
+    // real_ecosystem_tx), not queryable from this PHP process/DB at all.
+    // Showing a REAL/ZAR number here would mean either a live cross-server
+    // call per page load (no aggregate endpoint exists on that side yet) or
+    // a guess — neither is honest, so this page says so instead of faking it.
+    case 'wallet-overview': {
+        $db = open_analytics_db();
+        qe_init_tables($db);
+
+        $byType = [];
+        foreach ($db->query("SELECT type, COALESCE(SUM(bytes),0) AS s, COUNT(*) AS c FROM quota_transactions GROUP BY type") as $r) {
+            $byType[$r['type']] = ['bytes' => (int)$r['s'], 'count' => (int)$r['c']];
+        }
+        $sumOf = function (array $types) use ($byType): int {
+            $t = 0; foreach ($types as $ty) $t += $byType[$ty]['bytes'] ?? 0; return $t;
+        };
+
+        $totalGranted   = (int)$db->query("SELECT COALESCE(SUM(quota_bytes_total),0) FROM devices")->fetchColumn();
+        $totalUsed      = (int)$db->query("SELECT COALESCE(SUM(quota_bytes_used),0) FROM devices")->fetchColumn();
+        $walletDevices  = (int)$db->query("SELECT COUNT(DISTINCT device_id) FROM quota_transactions")->fetchColumn();
+
+        $transferCount  = (int)$db->query("SELECT COUNT(*) FROM quota_transfer")->fetchColumn();
+        $transferBytes  = (int)$db->query("SELECT COALESCE(SUM(bytes),0) FROM quota_transfer")->fetchColumn();
+        $recentTransfers = $db->query(
+            "SELECT sender_device, receiver_device, bytes, status, created_at
+             FROM quota_transfer ORDER BY id DESC LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
+
+        $topWallets = $db->query(
+            "SELECT device_id, user_id, plan, quota_bytes_total, quota_bytes_used, referral_code
+             FROM devices ORDER BY quota_bytes_total DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+
+        api_ok([
+            'breakdown' => [
+                'starter_bonus'    => $byType['starter_bonus'] ?? ['bytes' => 0, 'count' => 0],
+                'referral'         => ['bytes' => $sumOf(['referral_reward', 'referral_level2']),
+                                        'count' => ($byType['referral_reward']['count'] ?? 0) + ($byType['referral_level2']['count'] ?? 0)],
+                'purchase'         => ['bytes' => $sumOf(['purchase', 'purchase_real', 'purchase_usdt']),
+                                        'count' => ($byType['purchase']['count'] ?? 0) + ($byType['purchase_real']['count'] ?? 0) + ($byType['purchase_usdt']['count'] ?? 0)],
+                'ad_reward'        => $byType['ad_reward'] ?? ['bytes' => 0, 'count' => 0],
+                'promotion'        => $byType['promotion'] ?? ['bytes' => 0, 'count' => 0],
+                'transfer_in'      => $byType['transfer_in'] ?? ['bytes' => 0, 'count' => 0],
+                'transfer_out'     => $byType['transfer_out'] ?? ['bytes' => 0, 'count' => 0],
+                'admin_adjustment' => $byType['admin_adjustment'] ?? ['bytes' => 0, 'count' => 0],
+            ],
+            'total_granted_bytes' => $totalGranted,
+            'total_used_bytes'    => $totalUsed,
+            'wallet_devices'      => $walletDevices,
+            'transfer_count'      => $transferCount,
+            'transfer_bytes'      => $transferBytes,
+            'recent_transfers'    => $recentTransfers,
+            'top_wallets'         => $topWallets,
+            'checked_at'          => date('Y-m-d H:i:s'),
+        ]);
+        break;
+    }
+
     case 'payments-metrics':
         // Premium payments overview: packages, REAL vs USDT revenue/GB, discount
         // cost/value, and intent lists (pending/confirmed/failed).
@@ -2670,6 +3222,35 @@ switch ($action) {
         api_ok(['categories'  => $cats,
                 'exported_at' => (string)($ist['exported_at'] ?? ''),
                 'scope'       => 'global']);
+        break;
+    }
+
+    case 'user-search': {
+        // Global topbar live-search: partial User ID / device ID / referral
+        // code. Dash-, space- and case-insensitive so "22762dac" finds
+        // SL-227-62DAC5F0 and "ec58" finds sl-ec58c486-….
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $q = strtolower(str_replace([' ', '-'], '', trim((string)($_GET['q'] ?? ''))));
+        if (strlen($q) < 2) api_ok(['results' => []]);
+        $like = '%' . $q . '%';
+        $st = $db->prepare(
+            "SELECT device_id, user_id, referral_code, country, country_name,
+                    platform, plan, status, last_seen, app_version
+             FROM devices
+             WHERE REPLACE(LOWER(COALESCE(user_id,'')), '-', '') LIKE ?
+                OR REPLACE(LOWER(device_id), '-', '') LIKE ?
+                OR REPLACE(LOWER(COALESCE(referral_code,'')), '-', '') LIKE ?
+             ORDER BY last_seen DESC LIMIT 12");
+        $st->execute([$like, $like, $like]);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$r) {
+            $ls = $r['last_seen'] ?? null;
+            $r['is_online'] = (($r['status'] ?? '') === 'online'
+                               && $ls && (time()-(int)strtotime((string)$ls.' UTC')) < 10800);
+        }
+        unset($r);
+        api_ok(['results' => $rows]);
         break;
     }
 
@@ -3389,6 +3970,152 @@ switch ($action) {
         }
         api_ok(['status'=>'ok','profile'=>$tb_d]);
         break;
+
+    // ── HAKIM ADMIN (ADMIN_NOC_ROADMAP.md § 8.11) ───────────────────────
+    // Reads hakim-bot's actual running state — systemctl + hakim.db.
+    // Never fabricates a status; § 8.0's truth principle applies to this
+    // panel too. bot_config also holds openai_api_key/anthropic_api_key/
+    // telegram_token in plaintext — NEVER select or echo those columns.
+    // ── API STATUS (ADMIN_NOC_ROADMAP.md § 1.0 "API Status" — mangler helt) ──
+    // Cross-service health for the NOC view. Local checks (systemctl/socket)
+    // only mean something if this PHP process runs on the same host as the
+    // service being checked -- true for xray/nginx (same box as this panel),
+    // NOT verified for hakim-bot (see the on-page note; found during the
+    // Hakim Admin build that hakim-bot runs on the dev VPS, this panel may
+    // not). Remote checks (ecosystem API) are real HTTP calls, so they're
+    // correct regardless of which box runs this code.
+    case 'api-status': {
+        $db = open_analytics_db();
+
+        // Local: reuse the exact same checks as `heartbeat` rather than a
+        // second, potentially-drifting implementation.
+        $xray  = trim((string)@shell_exec('systemctl is-active xray.service 2>/dev/null'))  === 'active';
+        $nginx = trim((string)@shell_exec('systemctl is-active nginx.service 2>/dev/null')) === 'active';
+        $port8443 = @fsockopen('127.0.0.1', 8443, $errNo, $errStr, 1) !== false;
+
+        // Ecosystem API (Shahnameh, real_economy.php's own helper -- config
+        // status only, never the secret values).
+        $eco = re_ecosystem_status($db);
+        $ecoReachable = null; // null = not configured / not checked, not "down"
+        if ($eco['api_url'] !== '') {
+            $jwksUrl = rtrim($eco['api_url'], '/') . '/sso/jwks.json';
+            $raw = @shell_exec('curl -sk --max-time 5 -o /dev/null -w "%{http_code}" '
+                . escapeshellarg($jwksUrl) . ' 2>/dev/null');
+            $ecoReachable = (trim((string)$raw) === '200');
+        }
+
+        // AdMob (config presence only -- reachability of Google's own ad
+        // network isn't ours to probe).
+        ar_init_tables($db);
+        $arCfg = ar_config($db);
+
+        // GSC sync freshness.
+        $gscLast = null;
+        try {
+            $gscLast = $db->query("SELECT value FROM settings WHERE key='gsc_last_sync'")->fetchColumn() ?: null;
+        } catch (\Throwable $e) { /* gsc tables may not exist if never synced */ }
+
+        // Hakim bot -- best-effort local check; 'unknown' (not 'down') if
+        // this process isn't on the same host as hakim-bot.service.
+        $hakimStatus = trim((string)@shell_exec('systemctl is-active hakim-bot 2>&1'));
+        $hakimStatus = in_array($hakimStatus, ['active', 'inactive', 'failed'], true) ? $hakimStatus : 'unknown';
+
+        api_ok([
+            'local' => [
+                'xray' => $xray, 'nginx' => $nginx, 'port_8443' => $port8443,
+            ],
+            'ecosystem_api' => [
+                'configured' => $eco['api_url'] !== '',
+                'url'        => $eco['api_url'],
+                'reachable'  => $ecoReachable, // null = not configured, not checked
+                'link_secret_configured' => $eco['link_secret_configured'],
+                'api_key_configured'     => $eco['api_key_configured'],
+            ],
+            'admob' => [
+                'ssv_enabled' => (bool)$arCfg['admob_ssv_enabled'],
+                'configured'  => $arCfg['admob_rewarded_unit_id'] !== '',
+            ],
+            'gsc' => [
+                'last_sync' => $gscLast,
+            ],
+            'hakim_bot' => [
+                'status' => $hakimStatus,
+                'topology_note' => 'Local systemctl check -- only meaningful if this admin process shares a host with hakim-bot.service. "unknown" may mean the bot is fine but on a different box, not that it is down. See the Hakim page for the authoritative status.',
+            ],
+            'checked_at' => date('Y-m-d H:i:s'),
+        ]);
+        break;
+    }
+
+    case 'hakim-status': {
+        $HAKIM_DB = '/var/www/shahnameh/hakim-bot/hakim.db';
+        $status = trim((string)@shell_exec('systemctl is-active hakim-bot 2>&1'));
+        $out = [
+            'bot_status' => in_array($status, ['active', 'inactive', 'failed'], true) ? $status : 'unknown',
+            'provider' => null, 'model' => null, 'bot_active' => null, 'config_updated_at' => null,
+            'messages_in' => null, 'user_count' => null,
+            'requests_logged' => 0, 'success_rate' => null, 'avg_latency_ms' => null,
+            'recent_errors' => [], 'knowledge_summary' => null,
+        ];
+        if (is_readable($HAKIM_DB)) {
+            try {
+                $hdb = new PDO('sqlite:' . $HAKIM_DB, null, null, [
+                    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                ]);
+                $cfg = [];
+                foreach ($hdb->query("SELECT key, value FROM bot_config WHERE key IN ('ai_provider','bot_active','openai_model','anthropic_model')") as $r) {
+                    $cfg[$r['key']] = $r['value'];
+                }
+                $out['provider']   = $cfg['ai_provider'] ?? null;
+                $out['model']      = (($cfg['ai_provider'] ?? '') === 'anthropic') ? ($cfg['anthropic_model'] ?? null) : ($cfg['openai_model'] ?? null);
+                $out['bot_active'] = isset($cfg['bot_active']) ? (strtolower($cfg['bot_active']) === 'true') : null;
+
+                $out['config_updated_at'] = $hdb->query("SELECT MAX(updated_at) AS m FROM bot_config")->fetch()['m'] ?? null;
+                $out['messages_in']       = (int)($hdb->query("SELECT COUNT(*) AS c FROM bot_messages WHERE direction='in'")->fetch()['c'] ?? 0);
+                $out['user_count']        = (int)($hdb->query("SELECT COUNT(*) AS c FROM bot_users")->fetch()['c'] ?? 0);
+
+                // bot_requests only exists after a restart picks up the
+                // 2026-07-17 instrumentation commit — fail soft, not fabricated.
+                try {
+                    $reqCount = (int)($hdb->query("SELECT COUNT(*) AS c FROM bot_requests")->fetch()['c'] ?? 0);
+                    $out['requests_logged'] = $reqCount;
+                    if ($reqCount > 0) {
+                        $out['success_rate']   = round(((float)$hdb->query("SELECT AVG(success) AS a FROM bot_requests")->fetch()['a']) * 100, 1);
+                        $out['avg_latency_ms'] = round((float)$hdb->query("SELECT AVG(latency_ms) AS a FROM bot_requests")->fetch()['a']);
+                        $out['recent_errors']  = $hdb->query("SELECT ts, provider, fallback_used, error FROM bot_requests WHERE success=0 ORDER BY ts DESC LIMIT 10")->fetchAll();
+                    }
+                } catch (\Throwable $e) { /* bot_requests doesn't exist yet — bot not restarted since instrumentation */ }
+            } catch (\Throwable $e) { /* hakim.db unreadable/locked — report unknown, not a guess */ }
+        }
+        $kdir = '/var/www/shahnameh/hakim-bot/realshahnameh';
+        if (is_dir($kdir)) {
+            $files = array_values(array_filter(scandir($kdir), fn($f) => is_file("$kdir/$f")));
+            $bytes = 0; foreach ($files as $f) $bytes += filesize("$kdir/$f");
+            $out['knowledge_summary'] = count($files) . ' file(s), ' . round($bytes / 1024, 1) . ' KB total';
+        }
+        api_ok($out);
+        break;
+    }
+
+    // GET hakim-test-query?question=... — sends a REAL message to the live
+    // bot's configured provider (costs a real OpenAI/Anthropic API call).
+    case 'hakim-test-query': {
+        $question = trim((string)($_GET['question'] ?? ''));
+        if ($question === '') api_err('missing question');
+        if (mb_strlen($question) > 500) api_err('question too long (max 500 chars)');
+        $script = '/var/www/shahnameh/hakim-bot/admin_test_query.py';
+        if (!is_readable($script)) api_err('admin_test_query.py not deployed yet');
+        $cmd = 'cd /var/www/shahnameh/hakim-bot && /usr/bin/python3 admin_test_query.py '
+             . escapeshellarg($question) . ' 2>&1';
+        $raw = @shell_exec($cmd);
+        $j = json_decode((string)$raw, true);
+        if (!is_array($j) || !isset($j['answer'])) {
+            api_err('Hakim test query failed: ' . substr((string)$raw, 0, 300));
+        }
+        api_ok(['answer' => $j['answer']]);
+        break;
+    }
 
     default: api_err('unknown action');
 }

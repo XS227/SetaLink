@@ -5,9 +5,51 @@
 > `docs/realgram/IMPLEMENTATION_PLAN.md`. Everything you need is in the repo —
 > you should not need any conversation history to continue.
 
-Last updated: **2026-07-11**, by Claude (dev-box session: confirmed push
-resolution, recorded parallel ecosystem implementation; original handoff
-2026-07-10 by the assessment session).
+## Node Intelligence (Genome / Trust / Adaptive Routing / Evolution)
+
+**`docs/NODE_INTELLIGENCE_ARCHITECTURE.md`** (2026-07-16) — four new layers
+on top of the existing Tap-to-Learn telemetry engine. Implemented and
+smoke-tested server-side; **Adaptive Routing is feature-flagged OFF and has
+never routed real traffic** (Rule 7). Cross-boundary contract for
+`GET /v1/servers` documented in `docs/MULTINODE_API_v1.md` §8 — Agent A:
+read that before building against the new response shape. One open
+contract question for you there (`app_category`), not yet answered.
+
+## Node Console (Phase 1) — remote command queue for gateway nodes
+
+**`docs/NODE_CONSOLE_ARCHITECTURE.md`** (2026-07-17) — generic, node-type-
+agnostic remote command system riding the existing heartbeat channel (no
+SSH/RDP exposed). 5 safe predefined commands, HMAC-signed short-lived
+tokens, two independent allowlist enforcement points (server registry +
+node-side switch, never a raw exec path). Every execution — admin command
+or watchdog self-heal — feeds `node_command_events`, which
+`ni_rebuild_genome()` folds into the node's stability score. Implemented
+end-to-end on **both** Windows and Linux gateways; admin UI (Node Card
+buttons + history) in `admin/index.php`. RBAC/OTA/Volunteer Nodes/Script
+Library/Live Terminal explicitly deferred — see the doc's §8.
+
+## ⚠️ If you are picking up the Starlink Windows-gateway work, stop and read this first
+
+**`docs/STARLINK_WINDOWS_HANDOFF.md`** — §21/§22 (2026-07-17) are the
+current state. Short version: the Windows Surface gateway hit an isolated,
+unresolved Windows-ICS bug (`EnableSharing` throws `0x80040201`; root cause
+narrowed but not closed — see §21 for the full investigation trail) and is
+**classified as a non-blocking OS-specific issue, not a project blocker.**
+Decision: Windows Surface = controlled internal testing only, not real
+Iran users, until fixed or superseded. **The Linux gateway
+(`deploy/starlink/gateway/`, Raspberry Pi path) is now the primary path**
+— brought to parity with the hardened Windows scripts in §22 (self-healing
+watchdog, Node Console command dispatch, boot-persistent systemd timers).
+Sections §13-§20 below that are the detailed history (WinNAT/ICS
+diagnosis, toggle-amnesia root cause, ghost-WMI-entry investigation) —
+still accurate, just superseded as the "what to do next" guidance by
+§21/§22. This is unrelated to the RealGram work below — different
+subsystem, different branch state, read it independently.
+
+Last updated: **2026-07-11** (RealGram section below), by Claude (dev-box
+session: confirmed push resolution, recorded parallel ecosystem
+implementation; original handoff 2026-07-10 by the assessment session).
+Starlink section above updated separately, 2026-07-16.
 
 ---
 

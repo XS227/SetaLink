@@ -39,6 +39,8 @@ require_once __DIR__ . '/../lib/ads_recovery.php';
 require_once __DIR__ . '/../lib/payments.php';
 // Node intelligence — connect telemetry.
 require_once __DIR__ . '/../lib/node_intel.php';
+// Starlink exit-node registry + health policy (test-gated, disabled by default).
+require_once __DIR__ . '/../lib/starlink.php';
 
 /** Read a POST field from form-encoded body or a JSON body. */
 function v1_body(string $key, string $default = ''): string {
@@ -67,6 +69,8 @@ function v1_db(): PDO {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
     $pdo->exec("PRAGMA journal_mode=WAL");
+    // Wait for concurrent writers instead of throwing 'database is locked'.
+    $pdo->exec("PRAGMA busy_timeout=5000");
     $pdo->exec("CREATE TABLE IF NOT EXISTS node_allowlist (
         device_id TEXT NOT NULL, node_id TEXT NOT NULL, added_at TEXT,
         PRIMARY KEY (device_id, node_id))");
@@ -148,6 +152,7 @@ const V1_FI_HEL_DEVICE_UUIDS = [
     'sl-ec58c486' => '06f75644-a38a-4591-a063-294673bbbcb4',   // SL-227-6888F163
     'sl-6341972a' => '2bae0b05-ca90-4abe-89ce-21bcdc9c64c2',   // SL-227-FEF6C131
     'sl-a7bf102e' => '61cbd9b6-e617-4ae5-9d31-17d6a9f8c56b',   // SL-227-2DA1D1C0
+    'sl-f877790f' => '157b463d-b67c-4148-885b-2d7f2255a972',   // Android Termius-tester (diag isolation 2026-07-03)
 ];
 
 function v1_helsinki_node(?string $deviceId = null): array {
@@ -221,10 +226,216 @@ function v1_helsinki_node(?string $deviceId = null): array {
     ];
 }
 
+// Starlink exit node(s): never a direct Reality endpoint. The client dials the
+// SAME address/port/Reality key as the primary node — only the VLESS uuid
+// differs, so the VPS's Xray routing rule (matched on that uuid) can send this
+// session's egress over the WireGuard tunnel to the Starlink gateway instead
+// of the normal direct outbound. See docs/STARLINK_NODE_ARCHITECTURE.md §4.
+// Always test-gated (never publicly routed) and hidden entirely unless an
+// admin has both enabled it AND configured its dedicated uuid.
+function v1_starlink_nodes(PDO $pdo): array {
+    st_init_tables($pdo);
+    $out = [];
+    foreach (st_all($pdo) as $n) {
+        if ((int)$n['enabled'] !== 1 || $n['vless_uuid'] === '') continue;
+        $primary = v1_primary_node($pdo);
+        $creds = $primary['creds'];
+        $creds['uuid'] = $n['vless_uuid'];
+        $creds['altProfiles'] = [];
+        $out[$n['node_id']] = [
+            'id'    => $n['node_id'],
+            'test'  => true,   // Starlink is ALWAYS allowlist-gated in Phase 1 — never public.
+            'meta'  => st_meta($n),
+            'creds' => $creds,
+            '_row'  => $n,
+        ];
+    }
+    return $out;
+}
+
+// Germany (Nürnberg) node — the original primary before the 2026-07-03 Finland
+// flip. The box itself is fully healthy (Reality handshake + browsing verified
+// from outside 2026-07-06); it is only unreachable FROM IRAN (SYNs arrive, the
+// return path is dropped by Iranian filtering of the Hetzner IP). It therefore
+// re-enters the catalog as a selectable node, but is geo-hidden for IR callers
+// so Iranian users are never offered a node that is dead for them.
+function v1_germany_node(): array {
+    return [
+        'id'   => 'de-nbg',
+        'test' => false,
+        'meta' => [
+            'id'       => 'de-nbg',
+            'country'  => 'Germany',
+            'city'     => 'Nürnberg',
+            'flag'     => '🇩🇪',
+            'ping'     => 0,
+            'load'     => 0,
+            'protocol' => 'Reality',
+            'transport'=> 'reality',
+            'tags'     => [],
+            'premium'  => false,
+        ],
+        'creds' => [
+            // x-ui inbound on :443 (SNI cloudflare) — flow is EMPTY on this node,
+            // unlike Finland (vision). Sending vision here breaks the handshake.
+            'uuid'        => 'fd709d48-a983-484a-99e3-afc97e2c3692',
+            'address'     => '91.107.158.53',
+            'port'        => 443,
+            'publicKey'   => 'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
+            'shortId'     => 'd93af82f2ecb7f6a',
+            'sni'         => 'www.cloudflare.com',
+            'flow'        => '',
+            'fingerprint' => 'chrome',
+            'edgeAddress' => 'edge.setalink.no',
+            'edgePort'    => 443,
+            'wsPath'      => '/ws',
+            'xhttpPath'   => '/xhttp/',
+            'httpupPath'  => '/httpup',
+            // :8443 (oracle) / :2052 (amazon) inbounds exist on the box but use
+            // separate keypairs not registered here — left out until verified.
+            'altProfiles' => [],
+        ],
+    ];
+}
+
+// Node 3 — ProISP/One.com box (Copenhagen, AS51468), SAME network as the control
+// plane (5.249.252.221), so likely reachable from Iran (unlike Hetzner). Repaired
+// 2026-07-06: dest→cloudflare (microsoft broke Reality), and xray now accepts the
+// nginx PROXY-protocol header (sockopt.acceptProxyProtocol). Verified externally
+// via :443 (google 200, exit 5.249.255.116). NOT geo-hidden — we WANT Iran to try
+// it (that's the whole point). flow = vision (like Finland).
+function v1_proisp_node(): array {
+    return [
+        'id'   => 'dk-cph',
+        'test' => false,
+        'meta' => [
+            'id'       => 'dk-cph',
+            'country'  => 'Denmark',
+            'city'     => 'Copenhagen',
+            'flag'     => '🇩🇰',
+            'ping'     => 0,
+            'load'     => 0,
+            'protocol' => 'Reality',
+            'transport'=> 'reality',
+            'tags'     => ['New'],
+            'premium'  => false,
+        ],
+        'creds' => [
+            'uuid'        => '98d9b96f-a441-4462-a01d-267f31dae833',
+            'address'     => '5.249.255.116',
+            'port'        => 443,
+            'publicKey'   => 'O3k2RgLQ29tEo8OSXzB3edIF_tom_9nu0PutucwMojk',
+            'shortId'     => '0a1cba3f93dc95e9',
+            'sni'         => 'www.cloudflare.com',
+            'flow'        => 'xtls-rprx-vision',
+            'fingerprint' => 'chrome',
+            'edgeAddress' => 'edge.setalink.no',
+            'edgePort'    => 443,
+            'wsPath'      => '/ws',
+            'xhttpPath'   => '/xhttp/',
+            'httpupPath'  => '/httpup',
+            'altProfiles' => [],
+        ],
+    ];
+}
+
+// Country code (ISO-2) for the calling IP: geo_cache first, then a 1s ip-api
+// lookup cached back into geo_cache. Fails open to '' (nodes stay visible) so
+// a geo outage can never empty the server list.
+function v1_client_country(PDO $pdo): string {
+    static $cc;
+    if ($cc !== null) return $cc;
+    $cc = '';
+    $ip = v1_client_ip();
+    if ($ip === '' || $ip === '127.0.0.1' || $ip === '::1'
+        || str_starts_with($ip, '10.') || str_starts_with($ip, '192.168.')) return $cc;
+    try {
+        $st = $pdo->prepare("SELECT country FROM geo_cache WHERE ip = ? LIMIT 1");
+        $st->execute([$ip]);
+        $cached = (string)($st->fetchColumn() ?: '');
+        if ($cached !== '') return $cc = strtoupper($cached);
+        $ctx = stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
+        $raw = @file_get_contents("http://ip-api.com/json/{$ip}?fields=countryCode", false, $ctx);
+        if ($raw) {
+            $j = json_decode($raw, true);
+            $cc = strtoupper(substr((string)($j['countryCode'] ?? ''), 0, 4));
+            if ($cc !== '') {
+                $pdo->prepare("INSERT OR REPLACE INTO geo_cache (ip, country) VALUES (?, ?)")
+                    ->execute([$ip, $cc]);
+            }
+        }
+    } catch (\Throwable $_) { /* fail open */ }
+    return $cc;
+}
+
+// Node IDs hidden for specific caller countries (reachability, not policy):
+// 2026-07-09: Germany geo-hiding for IR REMOVED. Germany reachable from Iran
+// on MCI/Hamrah-e Avval (verified 2026-07-09, tester on 86.55.155.206); the
+// Hetzner blackhole is carrier-specific (Irancell/TCI), so let Iranian callers
+// try de-nbg. Re-add 'de-nbg' => ['IR'] here to hide it again if needed.
+const V1_GEO_HIDDEN_NODES = [];
+
+function v1_node_geo_hidden(PDO $pdo, string $nodeId): bool {
+    $hide = V1_GEO_HIDDEN_NODES[$nodeId] ?? null;
+    if ($hide === null) return false;
+    return in_array(v1_client_country($pdo), $hide, true);
+}
+
+// CDN edge node — VLESS-over-WebSocket fronted by Cloudflare (cf.setalink.no,
+// orange-cloud → ProISP origin 5.249.255.116). The client connects to
+// Cloudflare's anycast IPs over normal HTTPS, so Iran sees only Cloudflare
+// traffic (unblockable) and the return path comes from Cloudflare, not the
+// filtered ProISP→Iran route that broke direct Reality. Verified end-to-end
+// 2026-07-07 (google 200, exit 5.249.255.116). Uses the app's WebSocket
+// builder: edgeAddress/wsPath/uuid + built-in TLS fragmentation for DPI.
+function v1_cfedge_node(): array {
+    return [
+        'id'   => 'cf-edge',
+        'test' => false,
+        'meta' => [
+            'id'       => 'cf-edge',
+            'country'  => 'Realink',
+            'city'     => 'Secure Edge · Stealth',
+            'flag'     => '🛡️',
+            'ping'     => 0,
+            'load'     => 0,
+            'protocol' => 'WebSocket',
+            'transport'=> 'ws',
+            'tags'     => ['Stealth'],
+            'premium'  => false,
+        ],
+        'creds' => [
+            'uuid'        => '69205cf6-23a7-4e64-a1a2-865fd49471fe',
+            'address'     => 'alanya-turist.no',
+            'port'        => 443,
+            // WS builder reads edgeAddress (host + SNI + Host header), edgePort,
+            // wsPath. Cloudflare presents a valid cert for cf.setalink.no, so
+            // allowInsecure stays false.
+            'edgeAddress' => 'alanya-turist.no',
+            'edgePort'    => 443,
+            'wsPath'      => '/cfws',
+            'sni'         => 'alanya-turist.no',
+            'publicKey'   => '',
+            'shortId'     => '',
+            'flow'        => '',
+            'fingerprint' => 'chrome',
+            'xhttpPath'   => '/xhttp/',
+            'httpupPath'  => '/httpup',
+            'altProfiles' => [],
+        ],
+    ];
+
+}
+
 function v1_nodes(PDO $pdo, ?string $deviceId = null): array {
     $p = v1_primary_node($pdo);
     $h = v1_helsinki_node($deviceId);
-    return [$p['id'] => $p, $h['id'] => $h];
+    $g = v1_germany_node();
+    $d = v1_proisp_node();
+    $c = v1_cfedge_node();
+    $nodes = [$p['id'] => $p, $h['id'] => $h, $g['id'] => $g, $d['id'] => $d, $c['id'] => $c];
+    foreach (v1_starlink_nodes($pdo) as $id => $n) { $nodes[$id] = $n; }
+    return $nodes;
 }
 
 // Per-node health written by scripts/check-node-health.sh (cron). Returns the
@@ -250,11 +461,64 @@ function v1_node_down(string $id): bool {
     return $age >= 0 && $age <= 900;
 }
 
-function v1_device_allowed(PDO $pdo, ?string $deviceId, string $nodeId): bool {
+// Starlink nodes use a PUSH heartbeat model (no cron probe reaches them behind
+// CGNAT) — health is read straight from starlink_nodes, fails CLOSED (unlike
+// v1_node_down's fail-open default) because a silent/dead Starlink node must
+// never keep receiving new sessions. New sessions only route to ONLINE nodes
+// that aren't already at their session cap.
+function v1_starlink_down(array $starlinkNode): bool {
+    $row = $starlinkNode['_row'] ?? null;
+    if (!$row) return true;
+    return !st_routable($row);
+}
+
+// Starlink unlock policy (Khabat 2026-07-16, extended by the 2026-07-17
+// product correction): premium OR test_mode OR at least
+// V1_STARLINK_INVITES_REQUIRED verified ACTIVE invites unlock Starlink.
+// "Verified active invite" reuses api.php's bootstrap definition exactly
+// (granted referral + invitee device still alive) — one economy, one number.
+// Exposed raw via GET /starlink/unlock-status so the Home unlock card can
+// show real progress ("4 / 11 invited") instead of the feature being
+// invisible to locked users.
+define('V1_STARLINK_INVITES_REQUIRED', 11);
+function v1_starlink_unlock(PDO $pdo, ?string $deviceId): array {
+    $res = ['unlocked' => false, 'reason' => null,
+            'invitesVerified' => 0, 'invitesRequired' => V1_STARLINK_INVITES_REQUIRED];
+    if ($deviceId === null || $deviceId === '') return $res;
+    try {
+        $q = $pdo->prepare("SELECT plan, COALESCE(test_mode,0) AS test_mode FROM devices WHERE device_id = ?");
+        $q->execute([$deviceId]);
+        $dev = $q->fetch(PDO::FETCH_ASSOC);
+        $ic = $pdo->prepare(
+            "SELECT COUNT(*) FROM referral_uses ru
+             JOIN devices d ON d.device_id = ru.new_device_id
+             WHERE ru.referrer_device_id = ?
+               AND ru.status IN ('credited','approved')
+               AND (d.internet_ok = 1 OR d.last_seen >= datetime('now','-7 days'))");
+        $ic->execute([$deviceId]);
+        $res['invitesVerified'] = (int)$ic->fetchColumn();
+        if ($dev && $dev['plan'] === 'premium') {
+            $res['unlocked'] = true; $res['reason'] = 'premium';
+        } elseif ($dev && (int)$dev['test_mode'] === 1) {
+            $res['unlocked'] = true; $res['reason'] = 'test_mode';
+        } elseif ($res['invitesVerified'] >= V1_STARLINK_INVITES_REQUIRED) {
+            $res['unlocked'] = true; $res['reason'] = 'invites';
+        }
+    } catch (\Throwable $e) {}
+    return $res;
+}
+
+function v1_device_allowed(PDO $pdo, ?string $deviceId, string $nodeId, ?array $node = null): bool {
     if ($deviceId === null || $deviceId === '') return false;
     $st = $pdo->prepare("SELECT 1 FROM node_allowlist WHERE device_id = ? AND node_id = ?");
     $st->execute([$deviceId, $nodeId]);
-    return (bool)$st->fetchColumn();
+    if ($st->fetchColumn()) return true;
+    // Starlink nodes: policy gate above (premium/test_mode/invites). Every
+    // other test node stays strictly node_allowlist-gated as before.
+    if ($node !== null && isset($node['_row'])) {
+        if (v1_starlink_unlock($pdo, $deviceId)['unlocked']) return true;
+    }
+    return false;
 }
 
 function v1_record_usage(PDO $pdo, ?string $deviceId, string $nodeId): void {
@@ -390,6 +654,41 @@ if ($rel === '/payments/packages' || strncmp($rel, '/payments/', 10) === 0) {
 
 $nodes = v1_nodes($pdo, $deviceId);
 
+// Posts sent while the tunnel is up arrive from our own exit node, so
+// geo-locating that IP would label the row with the NODE's country
+// (Finland/Denmark/etc), poisoning learned routing. v1_geo_country()
+// returns '' for any of these on purpose — untunneled posts (e.g.
+// connect_fail fires before the tunnel is up) carry the user's real IP and
+// provide the per-country signal instead. Found on feat/b20-b22-vpn-game,
+// merged in here (2026-07-17) since v1_geo_country() is the one shared
+// implementation both /telemetry/connect and /servers' Adaptive Routing
+// context now call — fixing it once here fixes it for both callers.
+const V1_OWN_EXIT_IPS = ['65.109.183.7', '91.107.158.53', '5.249.255.116', '5.249.252.221'];
+
+/** Best-effort country from a client IP: cached lookup first, then a
+ *  1-second-budget external geo API, empty string on any failure/private IP
+ *  /own-exit-IP. Extracted from the telemetry handler so /servers can reuse
+ *  it for Adaptive Routing context without requiring any mobile-app change
+ *  for the 'country' dimension — see docs/NODE_INTELLIGENCE_ARCHITECTURE.md. */
+function v1_geo_country(PDO $pdo, string $clientIp): string {
+    if ($clientIp === '' || $clientIp === '127.0.0.1' || $clientIp === '::1'
+        || str_starts_with($clientIp, '10.') || str_starts_with($clientIp, '192.168.')
+        || in_array($clientIp, V1_OWN_EXIT_IPS, true)) {
+        return '';
+    }
+    try {
+        $gc = $pdo->prepare("SELECT country FROM geo_cache WHERE ip=? LIMIT 1");
+        $gc->execute([$clientIp]);
+        $c = (string)($gc->fetchColumn() ?: '');
+        if ($c !== '') return $c;
+    } catch (\Throwable $_) {}
+    $ctx = stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
+    $raw = @file_get_contents("http://ip-api.com/json/{$clientIp}?fields=countryCode", false, $ctx);
+    if (!$raw) return '';
+    $j = json_decode($raw, true);
+    return substr((string)($j['countryCode'] ?? ''), 0, 4);
+}
+
 // ── Connect telemetry ─────────────────────────────────────────────────────────
 // POST /v1/telemetry/connect — anonymous connect outcome upload.
 // No PII stored: country is geo-derived server-side; ISP/carrier are hashed.
@@ -409,25 +708,21 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
         if (!ni_telemetry_gate($pdo, $clientIp)) {
             v1_send(['ok' => true, 'throttled' => true]);
         }
-        $country = '';
-        if ($clientIp && $clientIp !== '127.0.0.1' && $clientIp !== '::1'
-            && !str_starts_with($clientIp, '10.') && !str_starts_with($clientIp, '192.168.')) {
-            // Use cached geo lookup if available in the analytics DB
+        $country = v1_geo_country($pdo, $clientIp); // own-exit-IP guard lives inside this now, see V1_OWN_EXIT_IPS
+        // Backfill operator from the device record when the app didn't send
+        // one — per-carrier routing needs every row it can get. (from
+        // feat/b20-b22-vpn-game)
+        $carrierName = v1_body('carrier_name');
+        if ($carrierName === '' || $carrierName === '--') {
             try {
-                $gc = $pdo->prepare("SELECT country FROM geo_cache WHERE ip=? LIMIT 1");
-                $gc->execute([$clientIp]);
-                $country = (string)($gc->fetchColumn() ?: '');
+                $cq = $pdo->prepare("SELECT carrier FROM devices WHERE device_id=?");
+                $cq->execute([$deviceId]);
+                $carrierName = (string)($cq->fetchColumn() ?: '');
             } catch (\Throwable $_) {}
-            if ($country === '') {
-                $ctx = stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
-                $raw = @file_get_contents("http://ip-api.com/json/{$clientIp}?fields=countryCode", false, $ctx);
-                if ($raw) {
-                    $j = json_decode($raw, true);
-                    $country = substr((string)($j['countryCode'] ?? ''), 0, 4);
-                }
-            }
         }
         ni_record($pdo, [
+            'device_id'     => $deviceId ?? '',
+            'decision_id'   => v1_body('decision_id'),
             'event'         => $rawTelemetryEvent,
             'node_id'       => v1_body('node_id') ?: 'primary',
             'profile_id'    => v1_body('profile_id') ?: null,
@@ -456,7 +751,7 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             'dns_ok'               => v1_body('dns_ok')               !== '' ? v1_body('dns_ok')               : null,
             'time_to_connect_ms'   => v1_body('time_to_connect_ms')   !== '' ? (int)v1_body('time_to_connect_ms')   : null,
             'error_category'       => v1_body('error_category'),
-            'carrier_name'         => v1_body('carrier_name'),
+            'carrier_name'         => $carrierName,
             'nat_type'             => v1_body('nat_type'),
             'ip_version'           => v1_body('ip_version'),
             'rtt_ms'               => v1_body('rtt_ms') !== '' ? (int)v1_body('rtt_ms') : null,
@@ -469,8 +764,22 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             // Build 69 device context fields
             'ios_version'          => v1_body('ios_version'),
             'device_model'         => v1_body('device_model'),
+            // Tap-to-Learn fields (2026-07-16) — see docs/realgram/DECISIONS.md
+            'trigger'              => v1_body('trigger'),
+            'jitter_ms'            => v1_body('jitter_ms')       !== '' ? (int)v1_body('jitter_ms')       : null,
+            'reconnect_count'      => v1_body('reconnect_count') !== '' ? (int)v1_body('reconnect_count') : null,
+            'throughput_kbps'      => v1_body('throughput_kbps') !== '' ? (int)v1_body('throughput_kbps') : null,
+            'battery_level'        => v1_body('battery_level')   !== '' ? (int)v1_body('battery_level')   : null,
+            'asn'                  => v1_body('asn'),
+            // Instagram quic_probe diagnostics (2026-07-17) — see doc comment
+            // on these fields in mobile-app/src/services/api/telemetry.api.ts.
+            'probe_ms'             => v1_body('probe_ms')        !== '' ? (int)v1_body('probe_ms')        : null,
+            'probe_outbound'       => v1_body('probe_outbound'),
+            'probe_tcp_detail'     => v1_body('probe_tcp_detail'),
+            'probe_tcp_category'   => v1_body('probe_tcp_category'),
+            'probe_quic_detail'    => v1_body('probe_quic_detail'),
         ]);
-        ni_telemetry_rotate($pdo); // enforce the retention cap (occasional trim)
+        ni_telemetry_rotate($pdo);
         // Auto-create structured diagnostic session for every disconnect event (build 68+).
         // Disconnect events carry CP1/CP4 summary data accumulated during the session.
         if ($rawTelemetryEvent === 'disconnect') {
@@ -498,7 +807,22 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             } catch (\Throwable $_) {}
         }
     } catch (\Throwable $_) { /* swallow — telemetry must never break the user flow */ }
-    v1_send(['ok' => true]);
+
+    // Tap-to-Learn reward — only when the client explicitly marks this as a
+    // tap-triggered, consented contribution AND passes a device_id (needed
+    // to credit the quota ledger; the anonymous connect_telemetry row above
+    // never gets this device_id, see lib/node_intel.php's schema comment).
+    // Rate-limited server-side (ni_award_tap_contribution) regardless of how
+    // often the client calls this — safe to call on every tap.
+    $tapReward = null;
+    if ($rawTelemetryEvent === 'tap' && $deviceId) {
+        try {
+            require_once __DIR__ . '/../lib/quota_economy.php';
+            $consent = v1_body('consent') === '1' || v1_body('consent') === 'true';
+            $tapReward = ni_award_tap_contribution($pdo, $deviceId, $consent);
+        } catch (\Throwable $_) { /* reward is best-effort, never blocks the response */ }
+    }
+    v1_send($tapReward ? ['ok' => true, 'reward' => $tapReward] : ['ok' => true]);
 }
 
 if ($rel === '/servers') {
@@ -506,39 +830,172 @@ if ($rel === '/servers') {
     // Load telemetry-derived success scores (last 7 days) for ranking.
     $scores = [];
     try { ni_init_tables($pdo); $scores = ni_node_scores($pdo, 7); } catch (\Throwable $_) {}
+    $carrierScores = [];
+    try {
+        $cst = $pdo->prepare("SELECT carrier FROM devices WHERE device_id=?");
+        $cst->execute([$deviceId]);
+        $fam = ni_carrier_family((string)($cst->fetchColumn() ?: ''));
+        // Fallback: carrier sent on the request itself — device registration
+        // may predate carrier capture (pre-b89 installs).
+        if ($fam === '') $fam = ni_carrier_family((string)($_GET['carrier'] ?? ''));
+        if ($fam !== '') $carrierScores = ni_node_scores_by_carrier($pdo, $fam, 21);
+    } catch (\Throwable $_) {}
     $out = [];
+    $eligibleIds = [];
     foreach ($nodes as $id => $n) {
-        if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) continue; // hide test nodes
+        if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id, $n)) continue; // hide test nodes
         // Auto-hide a non-primary node that is freshly DOWN, so users aren't
         // routed to a dead box. Primary is never hidden (last-resort default).
-        if ($id !== 'primary' && v1_node_down($id)) continue;
+        // Starlink (product correction 2026-07-17): an ELIGIBLE device must
+        // still SEE a down/maintenance Starlink node — greyed out with
+        // available:false, not erased. Nothing can connect to it anyway: the
+        // /servers/{id}/config route keeps refusing with 503 while it's down.
+        $starlinkUnavailable = false;
+        if (isset($n['_row'])) {
+            if (v1_starlink_down($n)) $starlinkUnavailable = true;
+        } elseif ($id !== 'primary' && v1_node_down($id)) continue;    // other nodes: cron-probe health
+        // Geo-hide nodes that are unreachable from the caller's country.
+        if (v1_node_geo_hidden($pdo, $id)) continue;
         $meta = $n['meta'];
+        if (isset($n['_row'])) {
+            $row = $n['_row'];
+            $meta['available']   = !$starlinkUnavailable;
+            $meta['status']      = $starlinkUnavailable
+                ? (((int)($row['maintenance_mode'] ?? 0) === 1) ? 'maintenance' : 'offline')
+                : 'online';
+            $meta['maxSessions'] = (int)($row['max_sessions'] ?? 0);
+            // Client copy hint: the node comes back by itself when its
+            // heartbeat turns healthy — the app should say so, not hide it.
+            if ($starlinkUnavailable) $meta['statusNote'] = 'auto_returns_when_healthy';
+        }
         // Annotate live ping from the latest health probe when available.
         $rtt = $health[$id]['rtt_ms'] ?? null;
         if (is_int($rtt)) $meta['ping'] = $rtt;
         // Annotate telemetry-based success score (0-100) when data exists.
-        if (isset($scores[$id]['success_rate'])) {
+        $cs = $carrierScores[$id] ?? null;
+        if ($cs !== null && (int)$cs['total'] >= 4 && $cs['success_rate'] !== null) {
+            $meta['successScore'] = (float)$cs['success_rate'];
+            $meta['scoreBasis']   = 'carrier';
+        } elseif (isset($scores[$id]['success_rate'])) {
             $meta['successScore'] = (float)$scores[$id]['success_rate'];
         }
-        $out[] = $meta;
+        $out[$id] = $meta;
+        // Unavailable Starlink nodes are listed for visibility but must not
+        // participate in adaptive-routing ranking (they can't take sessions).
+        if (!$starlinkUnavailable) $eligibleIds[] = $id;
     }
-    v1_send($out);
+
+    // Adaptive Routing — RULE 7: OFF by default (docs/CLAUDE_REALINK_RULES.md).
+    // When off, behaviour is byte-for-byte what it was before: annotated,
+    // unsorted, no decision recorded. See docs/NODE_INTELLIGENCE_ARCHITECTURE.md.
+    try {
+        if (ni_adaptive_routing_enabled($pdo) && count($eligibleIds) > 1) {
+            $clientIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+            if (str_contains($clientIp, ',')) $clientIp = trim(explode(',', $clientIp)[0]);
+            $context = array_filter([
+                'country'      => v1_geo_country($pdo, $clientIp) ?: null,
+                'carrier'      => trim((string)($_GET['carrier'] ?? '')) ?: null,
+                'network_type' => trim((string)($_GET['network_type'] ?? '')) ?: null,
+            ]);
+            $ranked = ni_rank_nodes($pdo, $eligibleIds, $context);
+            $decisionId = ni_record_routing_decision($pdo, (string)($deviceId ?? ''), $context, $ranked);
+            $sorted = [];
+            foreach ($ranked as $r) {
+                $meta = $out[$r['node_id']];
+                $meta['routingScore'] = $r['score'];
+                $meta['routingLevel'] = $r['context_level'];
+                $sorted[] = $meta;
+            }
+            // Unranked-but-listed nodes (unavailable Starlink) go last.
+            foreach ($out as $oid => $m) {
+                if (($m['available'] ?? true) === false) $sorted[] = $m;
+            }
+            v1_send(['servers' => $sorted, 'decisionId' => $decisionId]);
+        }
+    } catch (\Throwable $_) {
+        // Adaptive routing must never break server listing — fall through
+        // to the unsorted legacy response below on any failure.
+    }
+
+    v1_send(array_values($out));
 }
 
 if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
     $id = $m[1];
     if (!isset($nodes[$id])) v1_send(['message' => 'unknown server'], 404);
     $n = $nodes[$id];
-    if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) {
+    if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id, $n)) {
         v1_send(['message' => 'device not authorized for this node'], 403);
+    }
+    // Defense in depth: never hand out creds for a node geo-hidden from this
+    // caller (it is unreachable from their country anyway).
+    if (v1_node_geo_hidden($pdo, $id)) {
+        v1_send(['message' => 'node not available in your region'], 403);
     }
     // Refuse to hand out creds for a node that is freshly down (clients fall back
     // to primary / saved bootstrap). Primary is exempt — it's the last resort.
-    if ($id !== 'primary' && v1_node_down($id)) {
+    if (isset($n['_row']) && v1_starlink_down($n)) {
+        v1_send(['message' => 'node temporarily unavailable'], 503);
+    } elseif ($id !== 'primary' && v1_node_down($id)) {
         v1_send(['message' => 'node temporarily unavailable'], 503);
     }
     v1_record_usage($pdo, $deviceId, $id);
     v1_send($n['creds']);
+}
+
+// Starlink unlock/progress for the Home card (product correction 2026-07-17):
+// the card must exist for EVERY user — unlocked users see node state, locked
+// users see invite progress toward V1_STARLINK_INVITES_REQUIRED. node=null
+// only when no Starlink node is enabled at all.
+if ($rel === '/starlink/unlock-status') {
+    $unlock = v1_starlink_unlock($pdo, $deviceId);
+    $nodeOut = null;
+    $hasConnected = false;
+    foreach ($nodes as $id => $n) {
+        if (!isset($n['_row'])) continue;
+        $row = $n['_row'];
+        $down = v1_starlink_down($n);
+        $hbAge = !empty($row['last_heartbeat_at'])
+            ? max(0, time() - strtotime((string)$row['last_heartbeat_at'])) : null;
+        $nodeOut = [
+            'id'          => $id,
+            'available'   => !$down,
+            'status'      => $down
+                ? (((int)($row['maintenance_mode'] ?? 0) === 1) ? 'maintenance' : 'offline')
+                : 'online',
+            'statusNote'  => $down ? 'auto_returns_when_healthy' : null,
+            'maxSessions' => (int)($row['max_sessions'] ?? 0),
+            'country'     => $row['country'],
+            // Starlink Experience addendum #2 (Khabat 2026-07-17 ~10:30):
+            // health + safe telemetry for the dedicated Starlink page's
+            // status/advanced sections. Numbers only — the node's WAN/exit
+            // addresses never leave the server.
+            'health'      => st_health_state($row),
+            'telemetry'   => [
+                'latencyMs'            => $row['latency_ms'] !== null ? (int)$row['latency_ms'] : null,
+                'packetLossPct'        => $row['packet_loss_pct'] !== null ? (float)$row['packet_loss_pct'] : null,
+                'uptimeSecs'           => $row['uptime_secs'] !== null ? (int)$row['uptime_secs'] : null,
+                'downloadKbps'         => $row['measured_download_kbps'] !== null ? (int)$row['measured_download_kbps'] : null,
+                'uploadKbps'           => $row['measured_upload_kbps'] !== null ? (int)$row['measured_upload_kbps'] : null,
+                'sessions'             => (int)($row['current_sessions'] ?? 0),
+                'lastHeartbeatAgeSecs' => $hbAge,
+            ],
+        ];
+        // First-connect achievement: node_usage records every /config fetch,
+        // so "no row yet" = this device has never routed via Starlink. The
+        // client shows the one-time celebration only while hasConnected is
+        // still false at connect time (survives reinstalls, unlike local
+        // storage). Actual tunnel-up detection stays client-side.
+        if ($deviceId !== null && $deviceId !== '') {
+            try {
+                $uq = $pdo->prepare("SELECT 1 FROM node_usage WHERE device_id = ? AND node_id = ?");
+                $uq->execute([$deviceId, $id]);
+                $hasConnected = (bool)$uq->fetchColumn();
+            } catch (\Throwable $e) {}
+        }
+        break;
+    }
+    v1_send(['unlock' => $unlock, 'node' => $nodeOut, 'hasConnected' => $hasConnected]);
 }
 
 v1_send(['message' => 'not found'], 404);

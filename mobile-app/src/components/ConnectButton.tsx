@@ -17,12 +17,17 @@ export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnecti
 interface Props {
   state:    ConnectionState;
   onPress:  () => void;
+  /** Hold-to-disconnect escape hatch while taps are earning ZAR. */
+  onLongPress?: () => void;
   disabled?: boolean;
 }
 
-const SIZE = 188;
+// B-17: shrunk from 188 — the ring was oversized relative to its one job
+// (tap target, not a display). 152 still clears comfortable thumb-target
+// size with room to spare.
+const SIZE = 152;
 
-export function ConnectButton({ state, onPress, disabled = false }: Props) {
+export function ConnectButton({ state, onPress, onLongPress, disabled = false }: Props) {
   const scale       = useSharedValue(1);
   const glowOpacity = useSharedValue(0);
 
@@ -72,6 +77,8 @@ export function ConnectButton({ state, onPress, disabled = false }: Props) {
 
       <Pressable
         onPress={disabled ? undefined : onPress}
+        onLongPress={disabled ? undefined : onLongPress}
+        delayLongPress={600}
         onPressIn={disabled ? undefined : handlePressIn}
         onPressOut={disabled ? undefined : handlePressOut}
         hitSlop={8}
@@ -134,10 +141,10 @@ const styles = StyleSheet.create({
     borderWidth:     1,
   },
   // No text inside the circle — the logo IS the button. It fills nearly the
-  // whole inner ring (SIZE-24 = 164px) so the connect circle reads as the
+  // whole inner ring (SIZE-24 = 128px) so the connect circle reads as the
   // brand mark itself.
   logoImg: {
-    width:  152,
-    height: 152,
+    width:  122,
+    height: 122,
   },
 });

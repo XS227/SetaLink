@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','starlink','insights','seoranks','aidiag','installs','devices','logs','tunnellogs','release','config','hakim','wallet','apistatus','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -97,6 +97,15 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='intel'?' active':'' ?>" data-page="intel">
       <?= icon('chart') ?> Network Intel
     </div>
+    <div class="nav-item<?= $page==='starlink'?' active':'' ?>" data-page="starlink">
+      <?= icon('globe') ?> Starlink
+    </div>
+    <div class="nav-item<?= $page==='insights'?' active':'' ?>" data-page="insights">
+      <?= icon('globe') ?> User Insights
+    </div>
+    <div class="nav-item<?= $page==='seoranks'?' active':'' ?>" data-page="seoranks">
+      <?= icon('chart') ?> SEO Ranks
+    </div>
     <div class="nav-item<?= $page==='aidiag'?' active':'' ?>" data-page="aidiag">
       <?= icon('chart') ?> AI Diagnosis
     </div>
@@ -123,6 +132,15 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='config'?' active':'' ?>" data-page="config">
       <?= icon('settings') ?> Config
     </div>
+    <div class="nav-item<?= $page==='hakim'?' active':'' ?>" data-page="hakim">
+      <?= icon('chart') ?> Hakim
+    </div>
+    <div class="nav-item<?= $page==='wallet'?' active':'' ?>" data-page="wallet">
+      <?= icon('dollar') ?> Wallet
+    </div>
+    <div class="nav-item<?= $page==='apistatus'?' active':'' ?>" data-page="apistatus">
+      <?= icon('grid') ?> API Status
+    </div>
   </nav>
   <div class="sidebar-footer">Realink v0.9.12 &middot; <?= h($auth_user) ?></div>
 </aside>
@@ -133,6 +151,10 @@ function icon(string $name): string {
     <button class="menu-toggle btn btn-icon btn-ghost" id="menuToggle"><?= icon('menu') ?></button>
     <span class="topbar-title" id="pageTitle">Dashboard</span>
     <span class="topbar-sub" id="pageSub"></span>
+    <div class="gsearch" id="gSearchWrap">
+      <input class="input gsearch-input" id="gSearch" type="search" placeholder="Find user… (part of an ID works)" autocomplete="off" spellcheck="false">
+      <div class="gsearch-drop" id="gSearchDrop" hidden></div>
+    </div>
     <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
       <span class="refresh-ts" id="globalTs"></span>
       <button class="btn btn-ghost btn-sm" id="refreshBtn" title="Refresh"><?= icon('refresh') ?> Refresh</button>
@@ -331,11 +353,195 @@ function icon(string $name): string {
     </div>
 
     <!-- ============================================================ -->
+    <!-- VIEW: USER INSIGHTS                                          -->
+    <!-- Aggregate, privacy-safe. Source: admin/api.php?action=user-  -->
+    <!-- insights. No per-user destination logging: carriers are      -->
+    <!-- ASN-derived operator names, reachability is the app's own    -->
+    <!-- connectivity probes. See public/api.php normalize_carrier(). -->
+    <!-- ============================================================ -->
+    <div data-view="insights" hidden>
+      <div class="stat-grid" id="insTotals">
+        <div class="stat-card"><div class="stat-label">Total Devices</div><div class="stat-value" id="insTotalDevices">—</div><div class="stat-sub">all registered</div></div>
+        <div class="stat-card"><div class="stat-label">Active 24h</div><div class="stat-value" id="insActive24">—</div><div class="stat-sub" id="insActive7">— in 7d</div></div>
+        <div class="stat-card"><div class="stat-label">Premium</div><div class="stat-value" id="insPremium">—</div><div class="stat-sub">paid / gifted</div></div>
+        <div class="stat-card"><div class="stat-label">Data Volume</div><div class="stat-value" id="insTotalGb">—</div><div class="stat-sub">GB, all sessions</div></div>
+        <div class="stat-card"><div class="stat-label">Longest Session</div><div class="stat-value" id="insLongest">—</div><div class="stat-sub">single connection</div></div>
+      </div>
+
+      <!-- Reachability: from the app's own connectivity probes (probe_* in -->
+      <!-- connect_telemetry), never per-user destination logs. -->
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Service Reachability <span class="panel-sub" id="insReachSub">from in-app connectivity probes · 30d</span></span></div>
+        <div class="panel-body">
+          <div class="stat-grid">
+            <div class="stat-card"><div class="stat-label">Instagram</div><div class="stat-value" id="insReachInstagram">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Telegram</div><div class="stat-value" id="insReachTelegram">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Google</div><div class="stat-value" id="insReachGoogle">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Cloudflare</div><div class="stat-value" id="insReachCloudflare">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Apple</div><div class="stat-value" id="insReachApple">—</div><div class="stat-sub">% probes OK</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">📡 Mobile Carriers <span class="panel-sub">ASN-derived · never raw IP</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Carrier</th><th>Devices</th></tr></thead>
+              <tbody id="insCarrierTbl"><tr><td colspan="2" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Geography <span class="panel-sub">by country</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Country</th><th>Devices</th></tr></thead>
+              <tbody id="insGeoTbl"><tr><td colspan="2" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> Platforms</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Platform</th><th>Devices</th></tr></thead>
+              <tbody id="insPlatformTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> Device Brands <span class="panel-sub">top 10</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Brand</th><th>Devices</th></tr></thead>
+              <tbody id="insBrandTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('package') ?> Plans</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Plan</th><th>Devices</th></tr></thead>
+              <tbody id="insPlanTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Protocols <span class="panel-sub">sessions · GB</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Protocol</th><th>Sessions</th><th>GB</th></tr></thead>
+              <tbody id="insProtocolTbl"><tr><td colspan="3" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">🛰️ Nodes <span class="panel-sub">connects · 30d</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Node</th><th>Connects</th></tr></thead>
+              <tbody id="insNodeTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Longest Sessions</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Device</th><th>Protocol</th><th>Duration</th><th>MB</th><th>Day</th></tr></thead>
+              <tbody id="insLongestTbl"><tr><td colspan="5" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: SEO RANKS                                              -->
+    <!-- Target keyword positions over time. Source: admin/api.php?    -->
+    <!-- action=seo-ranks. Positions are recorded snapshots (manual    -->
+    <!-- entry now; can be fed from the Google Search Console API).    -->
+    <!-- ============================================================ -->
+    <div data-view="seoranks" hidden>
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-body" style="font-size:.82rem;color:var(--muted)">
+          Track where target search terms rank on Google over time. Lower position = better (1 = top).
+          Real positions come from Google Search Console; you can also log a manual snapshot below.
+          <span style="color:var(--muted-2)">Δ vs previous: green = moved up.</span>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header"><span class="panel-title">🔎 Google Search Console <span class="panel-sub" id="gscStatus">checking…</span></span></div>
+        <div class="panel-body">
+          <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+            <label style="font-size:.8rem;color:var(--muted)">Property
+              <input type="text" id="gscSite" class="input" style="width:230px" placeholder="https://setalink.no/">
+            </label>
+            <button class="btn btn-ghost" id="gscSaveBtn" type="button">Save</button>
+            <button class="btn btn-primary" id="gscSyncBtn" type="button">Sync from Search Console</button>
+            <span id="gscMsg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
+          </div>
+          <div id="gscSetup" style="display:none;margin-top:.7rem;font-size:.78rem;color:var(--muted-2);line-height:1.7">
+            <strong>Not connected yet.</strong> One-time setup: 1) Google Cloud → enable “Search Console API”, create a
+            <em>Service Account</em> → JSON key. 2) In Search Console → Settings → Users → add the service-account e-mail
+            (…@….iam.gserviceaccount.com) with read access. 3) Upload the JSON to
+            <code>/var/www/setalink/data/gsc-service-account.json</code> (chmod 600). Then click Sync.
+          </div>
+          <div id="gscUntracked" style="margin-top:.7rem"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Position Over Time <span class="panel-sub">lower is better</span></span></div>
+        <div class="panel-body"><div style="position:relative;height:320px"><canvas id="seoChart"></canvas></div></div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Tracked Keywords <span class="panel-sub" id="seoKwCount">top 10 · Iran intent</span></span></div>
+        <div class="panel-body" style="overflow-x:auto">
+          <table class="tbl">
+            <thead><tr><th>Keyword</th><th>Current</th><th>Δ</th><th>Best</th><th>Points</th><th>Last measured</th></tr></thead>
+            <tbody id="seoRankTbl"><tr><td colspan="6" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('download') ?> Log a Snapshot <span class="panel-sub">enter today's positions · blank = skip</span></span></div>
+        <div class="panel-body">
+          <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.8rem;flex-wrap:wrap">
+            <label style="font-size:.8rem;color:var(--muted)">Date <input type="date" id="seoDate" class="input" style="width:auto"></label>
+            <input type="text" id="seoNewKw" class="input" placeholder="+ add a new keyword to track" style="flex:1;min-width:180px">
+            <button class="btn btn-ghost" id="seoAddKwBtn" type="button">Add keyword</button>
+          </div>
+          <div id="seoInputGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.5rem"></div>
+          <div style="margin-top:.9rem;display:flex;gap:.6rem">
+            <button class="btn btn-primary" id="seoSaveBtn" type="button">Save snapshot</button>
+            <span id="seoSaveMsg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
     <!-- VIEW: ADS & REVENUE                                          -->
     <!-- ============================================================ -->
     <div data-view="ads" hidden>
       <div id="adsConfigBanner" class="panel" style="margin-bottom:1rem;display:none">
         <div class="panel-body" style="color:#f59e0b;font-size:.85rem" id="adsConfigBannerText"></div>
+      </div>
+
+      <!-- ADMIN_NOC_ROADMAP.md § 2.0: four distinct ad types, never summed
+           into one "Rewarded Views" number. Section below (stat-grid through
+           Config) is specifically AdMob Rewarded — labeled so, not generic
+           "Ads". Banner/Interstitial/AdsGram get their own panels after it. -->
+      <div class="panel" style="margin-bottom:1rem;background:rgba(91,140,255,.08)">
+        <div class="panel-body" style="font-size:.8rem"><strong>AdMob Rewarded Video</strong> — the section below (through "Config") is this ad type specifically, backed by AdMob's server-side verification (SSV). See AdMob Banner / AdMob Interstitial / AdsGram Rewarded further down for the other three.</div>
       </div>
 
       <div class="stat-grid">
@@ -379,6 +585,53 @@ function icon(string $name): string {
         <div class="panel-body">
           <div id="adsConfigForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.6rem .9rem"></div>
           <div id="adsCfgMsg" style="margin-top:.6rem;font-size:.8rem;opacity:.7"></div>
+        </div>
+      </div>
+
+      <!-- ADMIN_NOC_ROADMAP.md § 2.0 — the three ad surfaces with NO
+           admin visibility today. Built honestly: real ad units exist and
+           are live in the app (mobile-app/src/services/adsService.ts), but
+           no impression/click event ever reaches this server for banner or
+           interstitial — AdMob's SSV only exists for rewarded ads. Showing
+           "0" here would look like real, verified zero activity; it is
+           actually "not instrumented yet", so it says that instead. -->
+      <div class="panel" style="margin-top:1.5rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('package') ?> AdMob Banner</span></div>
+        <div class="panel-body" style="font-size:.82rem;color:var(--muted-2)">
+          Live in-app (Home + first row of Servers list), real AdMob ad units
+          — but no impression/click telemetry is sent to this server. AdMob's
+          Server-Side Verification (SSV) only exists for rewarded ads; a plain
+          banner has no equivalent callback. To get real numbers here, the app
+          needs to report its own <code>LOADED</code>/<code>CLICKED</code>
+          events (via the existing <code>track-event</code> analytics
+          endpoint) — not built yet. eCPM/fill-rate/revenue for this surface
+          can otherwise only come from the AdMob Reporting API directly
+          (same OAuth/service-account pattern as § 4's Search Console
+          integration) — also not connected.
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('package') ?> AdMob Interstitial</span></div>
+        <div class="panel-body" style="font-size:.82rem;color:var(--muted-2)">
+          Live in-app on Connect (and the Iran post-connect fallback path,
+          <code>adsService.ts</code>). Same gap as Banner above: the SDK's
+          <code>LOADED</code>/<code>CLOSED</code>/<code>ERROR</code> events
+          fire client-side only, nothing is reported to this server today.
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('package') ?> AdsGram Rewarded (Shahnameh)</span></div>
+        <div class="panel-body" style="font-size:.82rem;color:var(--muted-2)">
+          Separate system, separate backend (Shahnameh, not this panel) —
+          <strong>currently blocked, not just unmeasured.</strong> The
+          in-app button calls a stub endpoint that never reaches AdsGram's
+          real callback/verification flow, so real AdsGram activity
+          (confirmed in AdsGram's own dashboard) never reaches any admin.
+          Fix owned by Agent A — see coordination log. This panel will read
+          real AdsGram event data once that lands; showing nothing here
+          until then rather than a placeholder "0".
         </div>
       </div>
     </div>
@@ -756,6 +1009,32 @@ function icon(string $name): string {
           <table>
             <thead><tr><th>Time</th><th>Event</th><th>Node</th><th>Profile</th><th>SNI</th><th>Platform</th><th>Network</th><th>Country</th><th>Stage</th><th>Latency</th></tr></thead>
             <tbody id="intelFailTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: STARLINK (exit node, beta/testing — Phase 1)           -->
+    <!-- ============================================================ -->
+    <div data-view="starlink" hidden>
+      <div class="panel-header" style="margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
+        <span style="font-size:1.1rem;font-weight:700">Starlink exit nodes</span>
+        <button class="btn btn-secondary btn-sm" id="stRefreshBtn"><?= icon('refresh') ?> Refresh</button>
+        <span style="font-size:.72rem;color:var(--muted)">Never visible to normal users until enabled + allowlisted</span>
+      </div>
+
+      <div id="stNodesWrap"><div class="spinner"></div></div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header">
+          <span class="panel-title">Admin activity log</span>
+          <span class="panel-sub">enable/disable · maintenance · fallback · token rotation</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Node</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead>
+            <tbody id="stLogTbl"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1339,6 +1618,181 @@ function icon(string $name): string {
       </div>
     </div>
 
+    <!-- ============================================================ -->
+    <!-- VIEW: HAKIM ADMIN (ADMIN_NOC_ROADMAP.md § 8.11)               -->
+    <!-- Reads hakim-bot's ACTUAL running state (systemctl, hakim.db)  -->
+    <!-- — never a plausible invented status. § 8.0 applies here too.  -->
+    <!-- ============================================================ -->
+    <div data-view="hakim" hidden>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Bot Status</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div><span class="dot" id="hakimStatusDot"></span> <strong id="hakimStatusText">—</strong></div>
+              <div>Model: <strong id="hakimModel">—</strong></div>
+              <div>Bot active flag: <strong id="hakimActiveFlag">—</strong></div>
+              <div>Config last updated: <strong id="hakimLastUpdate">—</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Requests</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div>Total messages in: <strong id="hakimReqTotal">—</strong></div>
+              <div>Users: <strong id="hakimUserCount">—</strong></div>
+              <div>Success rate: <strong id="hakimSuccessRate">—</strong></div>
+              <div>Avg response time: <strong id="hakimAvgLatency">—</strong></div>
+            </div>
+            <p id="hakimReqNote" style="font-size:.7rem;color:var(--muted-2);margin-top:.5rem"></p>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Recent Errors</span><span class="panel-sub" id="hakimErrorCount"></span></div>
+        <div id="hakimErrorList" style="max-height:220px;overflow-y:auto">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Knowledge Sources</span></div>
+          <div class="panel-body" id="hakimKnowledge">—</div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Advisor Mode</span></div>
+          <div class="panel-body">
+            <p style="font-size:.75rem;color:var(--muted-2)">
+              Not implemented yet client-side (§ 8.9) — no config to show.
+              This panel will control it once built.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Test Hakim</span><span class="panel-sub">sends a real message to the live bot — costs a real API call</span></div>
+        <div class="panel-body">
+          <div class="form-group">
+            <textarea class="input" id="hakimTestQuestion" rows="2" placeholder="e.g. Hvordan fungerer Rikets Ære?"></textarea>
+          </div>
+          <button class="btn btn-primary" id="hakimTestBtn"><?= icon('refresh') ?> Send test question</button>
+          <div id="hakimTestResult" style="margin-top:.75rem;font-size:.82rem;white-space:pre-wrap"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: WALLET (ADMIN_NOC_ROADMAP.md § 1.0 "Wallet")            -->
+    <!-- Local quota ledger only — REAL/ZAR live on Shahnameh's Mongo, -->
+    <!-- not reachable from this DB. Says so, doesn't fake a number.   -->
+    <!-- ============================================================ -->
+    <div data-view="wallet" hidden>
+      <div class="panel" style="margin-bottom:1rem;background:rgba(245,158,11,.08)">
+        <div class="panel-body" style="font-size:.8rem">
+          This page shows the <strong>local data-quota ledger</strong> only
+          (this panel's own SQLite DB). <strong>REAL and ZAR balances live on
+          Shahnameh's separate backend (Mongo)</strong> and are not queryable
+          from here — no aggregate cross-system endpoint exists yet (see
+          <code>REALGRAM_NATIVE_MESSAGING_DESIGN.md</code> § 0 for the two
+          ledgers involved). Showing a REAL/ZAR total here would be a guess;
+          this page doesn't do that.
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">Total Quota Granted</div><div class="stat-value" id="wGranted">—</div><div class="stat-sub">sum, all devices</div></div>
+        <div class="stat-card"><div class="stat-label">Total Quota Used</div><div class="stat-value" id="wUsed">—</div><div class="stat-sub">sum, all devices</div></div>
+        <div class="stat-card"><div class="stat-label">Devices with Ledger Activity</div><div class="stat-value" id="wDevices">—</div></div>
+        <div class="stat-card"><div class="stat-label">Transfers (Vizh-style)</div><div class="stat-value" id="wTransferCount">—</div><div class="stat-sub" id="wTransferBytes">—</div></div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Breakdown by Source</span></div>
+        <div class="panel-body">
+          <table class="data-table" style="width:100%">
+            <thead><tr><th>Source</th><th>Bytes</th><th>Transactions</th></tr></thead>
+            <tbody id="wBreakdownBody"><tr><td colspan="3" style="opacity:.6">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="two-col" style="margin-top:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Top Wallets</span></div>
+          <div class="panel-body">
+            <table class="data-table" style="width:100%">
+              <thead><tr><th>Device</th><th>Plan</th><th>Total</th><th>Used</th></tr></thead>
+              <tbody id="wTopBody"><tr><td colspan="4" style="opacity:.6">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Recent Transfers</span></div>
+          <div class="panel-body">
+            <table class="data-table" style="width:100%">
+              <thead><tr><th>From</th><th>To</th><th>Bytes</th><th>When</th></tr></thead>
+              <tbody id="wTransfersBody"><tr><td colspan="4" style="opacity:.6">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: API STATUS (ADMIN_NOC_ROADMAP.md § 1.0 "API Status")    -->
+    <!-- ============================================================ -->
+    <div data-view="apistatus" hidden>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Local Services</span><span class="panel-sub">this admin process's own host</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div><span class="dot" id="asXrayDot"></span> Xray</div>
+              <div><span class="dot" id="asNginxDot"></span> nginx</div>
+              <div><span class="dot" id="asPortDot"></span> :8443</div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Ecosystem API</span><span class="panel-sub">Shahnameh backend</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div>Configured: <strong id="asEcoConfigured">—</strong></div>
+              <div>Reachable: <span class="dot" id="asEcoDot"></span></div>
+              <div>Link secret: <strong id="asEcoSecret">—</strong></div>
+              <div>API key: <strong id="asEcoKey">—</strong></div>
+            </div>
+            <p style="font-size:.7rem;color:var(--muted-2);margin-top:.5rem" id="asEcoUrl"></p>
+          </div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">AdMob</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div>Configured: <strong id="asAdmobConfigured">—</strong></div>
+              <div>SSV enabled: <strong id="asAdmobSsv">—</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Google Search Console Sync</span></div>
+          <div class="panel-body">
+            <div id="asGscLast">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Hakim Bot</span><span class="panel-sub">see the Hakim page for full detail</span></div>
+        <div class="panel-body">
+          <div><span class="dot" id="asHakimDot"></span> <strong id="asHakimText">—</strong></div>
+          <p style="font-size:.7rem;color:var(--muted-2);margin-top:.5rem" id="asHakimNote"></p>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /page-content -->
 </main>
 </div><!-- /layout -->
@@ -1608,12 +2062,18 @@ const pageTitles = {
   payments:  ['Payments', 'premium packages · REAL vs USDT · intents'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
   intel:     ['Network Intel', 'connect telemetry · node health scores · ISP/platform breakdown'],
+  starlink:  ['Starlink', 'exit-node (beta/testing) · tunnel health · allowlisted testers'],
+  insights:  ['User Insights', 'aggregate carriers · geo · devices · reachability · no per-user tracking'],
+  seoranks:  ['SEO Ranks', 'target keyword positions over time · Iran filtershekan intent'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
   logs:      ['Logs', 'structured log viewer'],
   tunnellogs:['Tunnel Logs', 'per-device PacketTunnelProvider diagnostics · stage · server · final error'],
   release:   ['Release', 'APK channels · version.json · health'],
   config:    ['Config', 'remote config · bootstrap server · settings'],
+  hakim:     ['Hakim', 'bot status · model · requests · knowledge · live test'],
+  wallet:    ['Wallet', 'quota ledger breakdown · transfers · top wallets · local only, no REAL/ZAR'],
+  apistatus: ['API Status', 'local services · ecosystem API · AdMob · GSC sync · Hakim bot'],
   referrals: ['Referrals', 'invite analytics · leaderboard · conversion'],
 };
 
@@ -1638,6 +2098,10 @@ document.querySelectorAll('.nav-item[data-page]').forEach(el=>el.addEventListene
 $('refreshBtn').addEventListener('click', ()=>views[activeView]?.init?.());
 $('dmRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadMessaging(false));
 $('nodesRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadNodes());
+$('seoSaveBtn')?.addEventListener('click', ()=>views.seoranks.save());
+$('seoAddKwBtn')?.addEventListener('click', ()=>views.seoranks.addKeyword());
+$('gscSyncBtn')?.addEventListener('click', ()=>views.seoranks.syncGsc());
+$('gscSaveBtn')?.addEventListener('click', ()=>views.seoranks.saveGscConfig());
 
 // ── Heartbeat (all pages) ────────────────────────────────────────────
 async function runHeartbeat() {
@@ -2365,9 +2829,8 @@ views.iran = {
         <div class="stat-card ${rate>=60?'stat-ok':rate>=30?'stat-warn':'stat-danger'}">
           <div class="stat-label">Success Rate</div><div class="stat-value">${rate}%</div></div>
         <div class="stat-card"><div class="stat-label">No Internet</div><div class="stat-value">${fmtNum(s.no_internet)}</div></div>
-        <div class="stat-card"><div class="stat-label">TCP Only</div><div class="stat-value">${fmtNum(s.tcp_only)}</div></div>
-        <div class="stat-card"><div class="stat-label">Emergency Used</div><div class="stat-value">${fmtNum(s.emergency_used)}</div></div>
-        <div class="stat-card"><div class="stat-label">Devices</div><div class="stat-value">${fmtNum(s.device_count)}</div></div>
+        <div class="stat-card"><div class="stat-label">Distinct SNIs</div><div class="stat-value">${fmtNum(s.sni_count)}</div></div>
+        <div class="stat-card"><div class="stat-label">Avg RTT</div><div class="stat-value">${s.avg_rtt!=null?Math.round(s.avg_rtt)+' ms':'—'}</div></div>
       </div>
       <div style="font-size:.7rem;color:var(--muted-2);margin-top:.5rem">Last report: ${esc(s.last_seen||'—')}</div>`;
   },
@@ -2667,16 +3130,38 @@ views.intel = {
     const typeIcon = t => ({route:'🔀',infra:'🖥',protocol:'📡',security:'🔒',platform:'📱'})[t]||'•';
 
     el.innerHTML = `<div style="display:flex;flex-direction:column;gap:.6rem">`
-      + rows.map(r => `
+      + rows.map(r => {
+        // Evidence-driven display (2026-07-17): every recommendation now
+        // carries a statistical confidence score + the raw evidence behind
+        // it (sample size, affected platforms/ISPs/app versions, first/last
+        // seen) — see ni_attach_evidence()/ni_two_proportion_confidence() in
+        // lib/node_intel.php. Shown up front, not buried, per Khabat's
+        // explicit "must remain evidence-driven" instruction.
+        const tier = r.confidence_tier || {emoji:'⚪',label:'unknown'};
+        const confPct = r.confidence != null ? Math.round(r.confidence * 100) : null;
+        const platforms = Object.entries(r.affected_platforms || {}).map(([k,v]) => `${esc(k)} (${v})`).join(', ') || '—';
+        const versions   = Object.entries(r.affected_app_versions || {}).map(([k,v]) => `${esc(k)} (${v})`).join(', ') || '—';
+        const ispCount   = Object.keys(r.affected_isp_hashes || {}).length;
+        const downgradeNote = r.severity_downgraded_from
+          ? `<div style="font-size:.7rem;color:#fbbf24;margin-top:.3rem">⚠ Downgraded from ${esc(r.severity_downgraded_from).toUpperCase()}: ${esc(r.severity_downgrade_reason||'')}</div>`
+          : '';
+        return `
         <div style="border-left:3px solid ${sev(r.severity)};background:rgba(255,255,255,.03);border-radius:0 6px 6px 0;padding:.65rem .85rem">
-          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap">
             <span style="font-size:.68rem;font-weight:700;color:${sev(r.severity)};letter-spacing:.04em">${sevLabel(r.severity)}</span>
             <span style="font-size:.7rem;color:var(--muted-2);background:rgba(255,255,255,.06);padding:1px 6px;border-radius:3px">${typeIcon(r.type)} ${esc((r.type||'').toUpperCase())}</span>
             <span style="font-size:.85rem;font-weight:700;color:var(--text)">${esc(r.title)}</span>
+            ${confPct != null ? `<span style="font-size:.72rem;font-weight:700;margin-left:auto;white-space:nowrap">${tier.emoji} ${confPct}% confidence (${r.sample_size ?? '?'} sessions)</span>` : ''}
           </div>
           <div style="font-size:.8rem;color:var(--muted);margin-bottom:.3rem">${esc(r.body)}</div>
           <div style="font-size:.75rem;color:var(--accent)">→ ${esc(r.action)}</div>
-        </div>`).join('')
+          ${downgradeNote}
+          <div style="font-size:.7rem;color:var(--muted-2);margin-top:.4rem;padding-top:.4rem;border-top:1px solid rgba(255,255,255,.06)">
+            Platforms: ${platforms} &nbsp;·&nbsp; App versions: ${versions} &nbsp;·&nbsp; ISPs affected: ${ispCount}
+            ${r.first_seen ? `&nbsp;·&nbsp; First seen: ${esc(r.first_seen)} &nbsp;·&nbsp; Last seen: ${esc(r.last_seen||'')}` : ''}
+          </div>
+        </div>`;
+      }).join('')
       + '</div>';
   },
   async loadDiagSessions() {
@@ -2820,6 +3305,160 @@ views.intel = {
         },
       });
     } catch(e) { /* Chart.js not yet loaded / canvas issue */ }
+  },
+};
+
+// ── VIEW: STARLINK ───────────────────────────────────────────────────
+views.starlink = {
+  init() {
+    $('stRefreshBtn').addEventListener('click', ()=>this.load());
+    this.load();
+  },
+  async load() {
+    try {
+      const d = await api.get('starlink-list');
+      this.renderNodes(d.nodes || []);
+      this.renderLog(d.log || []);
+    } catch(e) {
+      $('stNodesWrap').innerHTML = `<div class="panel-empty">Error: ${esc(e.message)}</div>`;
+    }
+  },
+  healthColor(h) {
+    return h==='ONLINE' ? 'var(--ok)' : h==='DEGRADED' ? 'var(--warn)' : h==='MAINTENANCE' ? 'var(--muted)' : 'var(--danger)';
+  },
+  renderNodes(nodes) {
+    if (!nodes.length) { $('stNodesWrap').innerHTML = '<div class="panel-empty">No Starlink nodes registered yet.</div>'; return; }
+    $('stNodesWrap').innerHTML = nodes.map(n => {
+      const allow = (n.allowlist||[]).map(a=>`<span class="chip">${esc(a.device_id)} <a href="#" data-remove-device="${esc(a.device_id)}" data-node="${esc(n.node_id)}" title="Revoke">×</a></span>`).join(' ') || '<span style="color:var(--muted)">none</span>';
+      return `<div class="panel" style="margin-bottom:1rem" data-node-panel="${esc(n.node_id)}">
+        <div class="panel-header" style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+          <span class="panel-title">${esc(n.display_name)} <span style="font-weight:400;color:var(--muted)">(${esc(n.node_id)})</span></span>
+          <span class="badge" style="background:${this.healthColor(n.health_state)}20;color:${this.healthColor(n.health_state)};border:1px solid ${this.healthColor(n.health_state)}">${esc(n.health_state)}</span>
+          <span class="badge" style="margin-left:auto">${n.enabled ? 'Enabled' : 'Disabled'} · ${esc(n.testing_state)}</span>
+        </div>
+        <div class="panel-body" style="padding:.75rem 1rem;font-size:.8rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.5rem">
+          <div><b>Country</b><br>${esc(n.country)}</div>
+          <div><b>Tunnel</b><br>${esc(n.tunnel_status)}</div>
+          <div><b>Last heartbeat</b><br>${esc((n.last_heartbeat_at||'never').replace('T',' '))}</div>
+          <div><b>Public IPv4</b><br>${esc(n.public_ipv4||'—')}</div>
+          <div><b>Public IPv6</b><br>${esc(n.public_ipv6||'—')}</div>
+          <div><b>Exit IP</b><br>${esc(n.exit_ip||'—')}</div>
+          <div><b>Latency</b><br>${n.latency_ms!=null?n.latency_ms+' ms':'—'}</div>
+          <div><b>Packet loss</b><br>${n.packet_loss_pct!=null?n.packet_loss_pct+'%':'—'}</div>
+          <div><b>Recent disconnects</b><br>${fmtNum(n.recent_disconnects||0)}</div>
+          <div><b>Down / Up</b><br>${n.measured_download_kbps!=null?(n.measured_download_kbps/1000).toFixed(1)+' Mbps':'—'} / ${n.measured_upload_kbps!=null?(n.measured_upload_kbps/1000).toFixed(1)+' Mbps':'—'}</div>
+          <div><b>Sessions</b><br>${n.current_sessions}/${n.max_sessions}</div>
+          <div><b>Allocated</b><br>${(n.allocated_kbps/1000).toFixed(0)} Mbps of ${(n.nominal_capacity_kbps/1000).toFixed(0)} Mbps nominal</div>
+          <div><b>Version</b><br>${esc(n.software_version||'—')}</div>
+          <div><b>Last error</b><br><span style="color:var(--danger)">${esc(n.last_error||'—')}</span></div>
+        </div>
+        <div class="panel-body" style="padding:0 1rem 1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-sm ${n.enabled?'btn-secondary':'btn-primary'}" data-act="toggle" data-node="${esc(n.node_id)}" data-val="${n.enabled?0:1}">${n.enabled?'Disable':'Enable'}</button>
+          <button class="btn btn-sm btn-secondary" data-act="maint" data-node="${esc(n.node_id)}" data-val="${n.maintenance_mode?0:1}">${n.maintenance_mode?'Exit maintenance':'Enter maintenance'}</button>
+          <button class="btn btn-sm btn-secondary" data-act="fallback" data-node="${esc(n.node_id)}">Force fallback</button>
+          <button class="btn btn-sm btn-secondary" data-act="token" data-node="${esc(n.node_id)}">Generate heartbeat token</button>
+        </div>
+        <div class="panel-body" style="padding:0 1rem 1rem">
+          <b style="font-size:.8rem">Allowlisted test devices</b><br>
+          <div style="margin:.4rem 0">${allow}</div>
+          <form data-allow-form="${esc(n.node_id)}" style="display:flex;gap:.4rem">
+            <input class="input btn-sm" name="device_id" placeholder="device_id" style="flex:1">
+            <button class="btn btn-sm btn-primary" type="submit">Allow</button>
+          </form>
+        </div>
+        <div class="panel-body" style="padding:0 1rem 1rem;border-top:1px solid var(--border)">
+          <b style="font-size:.8rem">Node Console</b>
+          <span style="color:var(--muted);font-size:.75rem"> — runs on this node's next heartbeat (≤30s), never instantly; results land in the history below.</span>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.5rem 0">
+            <button class="btn btn-sm btn-secondary" data-cmd="wg_status" data-node="${esc(n.node_id)}">WireGuard status</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="network_status" data-node="${esc(n.node_id)}">Network status</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="last_100_logs" data-node="${esc(n.node_id)}">Last 100 logs</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="refresh_telemetry" data-node="${esc(n.node_id)}">Refresh telemetry</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="restart_wireguard" data-node="${esc(n.node_id)}" data-confirm="1">Restart WireGuard</button>
+            <button class="btn btn-sm btn-secondary" data-history="${esc(n.node_id)}">Show history</button>
+          </div>
+          <div data-history-wrap="${esc(n.node_id)}" style="display:none;font-size:.75rem;font-family:monospace;white-space:pre-wrap;max-height:260px;overflow:auto;background:var(--bg-alt);padding:.5rem;border-radius:4px"></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    $('stNodesWrap').querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => this.act(btn)));
+    $('stNodesWrap').querySelectorAll('[data-remove-device]').forEach(a => a.addEventListener('click', e => {
+      e.preventDefault();
+      this.allowlistRemove(a.dataset.node, a.dataset.removeDevice);
+    }));
+    $('stNodesWrap').querySelectorAll('[data-allow-form]').forEach(f => f.addEventListener('submit', e => {
+      e.preventDefault();
+      const did = f.device_id.value.trim();
+      if (did) this.allowlistAdd(f.dataset.allowForm, did);
+    }));
+    $('stNodesWrap').querySelectorAll('[data-cmd]').forEach(btn => btn.addEventListener('click', () => this.sendCommand(btn)));
+    $('stNodesWrap').querySelectorAll('[data-history]').forEach(btn => btn.addEventListener('click', () => this.toggleHistory(btn)));
+  },
+  async sendCommand(btn) {
+    const node = btn.dataset.node, cmd = btn.dataset.cmd;
+    if (btn.dataset.confirm && !confirm(`Queue "${cmd}" on ${node}? Runs on its next heartbeat.`)) return;
+    try {
+      await api.post({action:'node-command-enqueue', node_id:node, command_key:cmd, confirmed: btn.dataset.confirm ? '1' : '0'});
+      toast('Command queued — check history in ~30s', 'success');
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async toggleHistory(btn) {
+    const node = btn.dataset.history;
+    const wrap = document.querySelector(`[data-history-wrap="${node}"]`);
+    if (wrap.style.display !== 'none') { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    wrap.textContent = 'Loading…';
+    try {
+      const rows = await api.get('node-command-events', {node_id: node, limit: 30}) || [];
+      wrap.textContent = rows.length ? rows.map(r =>
+        `${r.created_at}  ${r.automatic ? '[self-heal]' : '[admin]'}  ${r.command_key}  ${r.success ? 'OK' : 'FAILED'}` +
+        (r.duration_ms != null ? `  ${r.duration_ms}ms` : '') +
+        (r.recovery_action ? `  (${r.recovery_action})` : '')
+      ).join('\n') : '(no command/self-heal events recorded yet)';
+    } catch(e) { wrap.textContent = 'Error: ' + e.message; }
+  },
+  async act(btn) {
+    const node = btn.dataset.node, act = btn.dataset.act;
+    try {
+      if (act === 'toggle') {
+        await api.post({action:'starlink-toggle-enabled', node_id:node, enabled: btn.dataset.val === '1'});
+      } else if (act === 'maint') {
+        await api.post({action:'starlink-set-maintenance', node_id:node, maintenance: btn.dataset.val === '1'});
+      } else if (act === 'fallback') {
+        if (!confirm('Force this node into fallback (stop routing new sessions) now?')) return;
+        await api.post({action:'starlink-force-fallback', node_id:node});
+      } else if (act === 'token') {
+        const d = await api.post({action:'starlink-generate-token', node_id:node});
+        prompt('Heartbeat token (shown once — copy into the gateway config now):', d.heartbeat_token);
+      }
+      toast('Updated', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async allowlistAdd(node, deviceId) {
+    try {
+      await api.post({action:'node-allowlist-add', node_id: node, device_id: deviceId});
+      toast('Device allowlisted', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async allowlistRemove(node, deviceId) {
+    try {
+      await api.post({action:'node-allowlist-remove', node_id: node, device_id: deviceId});
+      toast('Device revoked', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  renderLog(rows) {
+    if (!rows.length) { $('stLogTbl').innerHTML = '<tr><td colspan="5" class="tbl-empty">No admin activity yet</td></tr>'; return; }
+    $('stLogTbl').innerHTML = rows.map(r => `<tr>
+      <td style="font-size:.7rem;color:var(--muted)">${esc((r.created_at||'').replace('T',' '))}</td>
+      <td>${esc(r.node_id)}</td>
+      <td>${esc(r.actor)}</td>
+      <td>${esc(r.action)}</td>
+      <td style="font-size:.75rem;color:var(--muted)">${esc(r.detail||'')}</td>
+    </tr>`).join('');
   },
 };
 
@@ -3017,6 +3656,175 @@ views.installs = {
           }).join('')
         : '<tr><td colspan="7" class="tbl-empty">No install events reported yet</td></tr>';
     } catch(e) { toast('Install diagnostics: '+e.message,'error'); }
+  },
+};
+
+// ── VIEW: USER INSIGHTS ──────────────────────────────────────────────
+// Aggregate, privacy-safe breakdowns from admin/api.php?action=user-insights.
+// No per-user destination logging: carriers are ASN-derived operator names,
+// reachability comes from the app's own connectivity probes.
+views.insights = {
+  init() { this.load(); },
+  fmtDur(secs) {
+    secs = Number(secs) || 0;
+    if (secs < 60) return secs + 's';
+    if (secs < 3600) return Math.floor(secs/60) + 'm ' + (secs%60) + 's';
+    return Math.floor(secs/3600) + 'h ' + Math.floor((secs%3600)/60) + 'm';
+  },
+  pct(v) { return (v===null || v===undefined || isNaN(v)) ? '—' : Math.round(v) + '%'; },
+  rows(tbody, list, cols, cells) {
+    const el = $(tbody); if (!el) return;
+    el.innerHTML = (list && list.length)
+      ? list.map(cells).join('')
+      : `<tr><td colspan="${cols}" class="tbl-empty">No data</td></tr>`;
+  },
+  async load() {
+    try {
+      const d = await api.get('user-insights');
+      const t = d.totals || {}, r = d.reachability || {};
+
+      $('insTotalDevices').textContent = t.total_devices ?? '—';
+      $('insActive24').textContent     = t.active_24h ?? '—';
+      $('insActive7').textContent      = (t.active_7d ?? '—') + ' in 7d';
+      $('insPremium').textContent      = t.premium ?? '—';
+      $('insTotalGb').textContent      = (t.total_gb ?? 0) + ' GB';
+      $('insLongest').textContent      = this.fmtDur(t.longest_secs);
+
+      $('insReachInstagram').textContent  = this.pct(r.instagram);
+      $('insReachTelegram').textContent   = this.pct(r.telegram);
+      $('insReachGoogle').textContent     = this.pct(r.google);
+      $('insReachCloudflare').textContent = this.pct(r.cloudflare);
+      $('insReachApple').textContent      = this.pct(r.apple);
+      $('insReachSub').textContent = `from in-app connectivity probes · ${d.days ?? 30}d`;
+
+      this.rows('insCarrierTbl', d.carriers, 2, x=>`<tr><td>${esc(x.carrier)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insGeoTbl', d.geo, 2, x=>`<tr><td>${esc(x.country)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insPlatformTbl', d.platforms, 2, x=>`<tr><td>${esc(x.platform)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insBrandTbl', d.brands, 2, x=>`<tr><td>${esc(x.brand)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insPlanTbl', d.plans, 2, x=>`<tr><td>${esc(x.plan||'free')}</td><td>${x.devices}</td></tr>`);
+      this.rows('insProtocolTbl', d.protocols, 3, x=>`<tr><td>${esc(x.protocol)}</td><td>${x.sessions}</td><td>${x.gb ?? 0}</td></tr>`);
+      this.rows('insNodeTbl', d.nodes, 2, x=>`<tr><td>${esc(x.node_id)}</td><td>${x.connects}</td></tr>`);
+      this.rows('insLongestTbl', d.longest, 5, x=>`<tr>`
+        + `<td style="font-family:var(--mono);font-size:.72rem">${esc(x.device)}</td>`
+        + `<td>${esc(x.protocol)}</td><td>${this.fmtDur(x.duration_secs)}</td>`
+        + `<td>${x.mb ?? 0}</td><td class="mobile-hide">${esc(x.day||'')}</td></tr>`);
+    } catch(e) { toast('User insights: '+e.message,'error'); }
+  },
+};
+
+// ── VIEW: SEO RANKS ──────────────────────────────────────────────────
+// Keyword position tracker. Reads admin/api.php?action=seo-ranks, renders a
+// position-over-time chart (Y inverted — 1 at top), a summary table, and a
+// form to log a snapshot (POST seo-rank-record). Manual entry now; a Google
+// Search Console feed can populate the same table later.
+views.seoranks = {
+  chart: null,
+  data: [],
+  init() { this.load(); const d=$('seoDate'); if(d&&!d.value) d.value=new Date().toISOString().slice(0,10); },
+  async load() {
+    try {
+      const d = await api.get('seo-ranks');
+      this.data = d.keywords || [];
+      this.renderTable();
+      this.renderChart();
+      this.renderInputs();
+      this.renderGsc(d.gsc || {});
+      $('seoKwCount').textContent = this.data.length + ' tracked · Iran intent';
+    } catch(e) { toast('SEO ranks: '+e.message,'error'); }
+  },
+  renderGsc(g) {
+    const st = $('gscStatus'), site = $('gscSite');
+    if (site && !site.value) site.value = g.site_url || 'https://setalink.no/';
+    $('gscSetup').style.display = g.key_present ? 'none' : 'block';
+    if (!g.key_present) { st.textContent = 'not connected'; st.style.color='#f59e0b'; }
+    else { st.textContent = 'connected' + (g.last_sync ? ' · last sync '+g.last_sync : ' · never synced'); st.style.color='var(--muted)'; }
+  },
+  async saveGscConfig() {
+    const u = ($('gscSite').value||'').trim(); if(!u) return;
+    try { await api.post({action:'seo-rank-gsc-config', site_url:u}); $('gscMsg').textContent='Property saved.'; }
+    catch(e){ toast('Save failed: '+e.message,'error'); }
+  },
+  async syncGsc() {
+    $('gscMsg').textContent = 'Syncing…';
+    try {
+      const r = await api.post({action:'seo-rank-gsc-sync'});
+      $('gscMsg').textContent = `Synced ${r.snapshots} snapshots for ${r.keywords_hit} keyword(s) · ${r.window}`;
+      toast('Search Console synced','success');
+      // Suggest high-impression queries we don't track yet.
+      const u = r.top_untracked||[];
+      $('gscUntracked').innerHTML = u.length
+        ? '<div style="font-size:.78rem;color:var(--muted)">Top queries you rank for but don\'t track yet (impressions) — click to add:</div>'
+          + u.map(x=>`<button type="button" class="btn btn-ghost gsc-add" data-q="${esc(x.query)}" style="margin:.25rem .3rem 0 0;font-size:.75rem" dir="auto">${esc(x.query)} <span style="color:var(--muted-2)">${x.impressions}</span></button>`).join('')
+        : '';
+      document.querySelectorAll('.gsc-add').forEach(b=>b.addEventListener('click',()=>{ $('seoNewKw').value=b.dataset.q; this.addKeyword(); }));
+      this.load();
+    } catch(e){ $('gscMsg').textContent=''; toast('Sync failed: '+e.message,'error'); }
+  },
+  renderTable() {
+    const fmtPos = p => p==null ? '<span style="color:var(--muted-2)">—</span>' : '#'+ (Number.isInteger(p)?p:p.toFixed(1));
+    $('seoRankTbl').innerHTML = this.data.length ? this.data.map(k=>{
+      let dcell = '<span style="color:var(--muted-2)">—</span>';
+      if (k.delta!=null && k.delta!==0) {
+        const up = k.delta>0;
+        dcell = `<span class="badge ${up?'badge-ok':'badge-danger'}">${up?'▲':'▼'} ${Math.abs(k.delta)}</span>`;
+      } else if (k.delta===0) dcell = '<span class="badge badge-info">0</span>';
+      return `<tr>
+        <td dir="auto" style="font-weight:600">${esc(k.keyword)}</td>
+        <td>${fmtPos(k.latest)}</td><td>${dcell}</td>
+        <td>${fmtPos(k.best)}</td><td>${k.points||0}</td>
+        <td class="mobile-hide" style="font-size:.75rem;color:var(--muted)">${esc(k.last_at||'never')}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="6" class="tbl-empty">No keywords tracked</td></tr>';
+  },
+  renderChart() {
+    if (typeof Chart==='undefined') return;
+    if (this.chart) { try{this.chart.destroy();}catch(e){} this.chart=null; }
+    // Union of all measurement dates → shared X axis.
+    const dates = [...new Set(this.data.flatMap(k=>(k.history||[]).map(h=>h.captured_at.slice(0,10))))].sort();
+    if (!dates.length) { return; }
+    const palette = ['#00e87a','#3399ff','#f59e0b','#e0559e','#8b5cf6','#22d3ee','#ef4444','#a3e635','#fb923c','#e879f9'];
+    const measured = this.data.filter(k=>(k.history||[]).length);
+    const sets = measured.map((k,i)=>{
+      const byDay = {}; (k.history||[]).forEach(h=>{ byDay[h.captured_at.slice(0,10)]=h.position; });
+      return { label:k.keyword, data:dates.map(d=>byDay[d] ?? null), spanGaps:true,
+               borderColor:palette[i%palette.length], backgroundColor:palette[i%palette.length],
+               tension:.25, borderWidth:2, pointRadius:3 };
+    });
+    this.chart = new Chart($('seoChart'), {
+      type:'line',
+      data:{ labels:dates, datasets:sets },
+      options:{ responsive:true, maintainAspectRatio:false,
+        scales:{ y:{ reverse:true, title:{display:true,text:'Google position (1 = top)'},
+                     ticks:{precision:0}, suggestedMin:1 } },
+        plugins:{ legend:{ labels:{ boxWidth:12, font:{size:10} } } } }
+    });
+  },
+  renderInputs() {
+    $('seoInputGrid').innerHTML = this.data.map(k=>`
+      <label style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;background:var(--panel-2,rgba(255,255,255,.03));padding:.4rem .6rem;border-radius:6px">
+        <span dir="auto" style="font-size:.8rem">${esc(k.keyword)}</span>
+        <input type="number" min="1" max="100" step="1" class="input seo-pos" data-kw="${esc(k.keyword)}" data-lang="${esc(k.lang||'fa')}" placeholder="${k.latest??'#'}" style="width:70px">
+      </label>`).join('');
+  },
+  addKeyword() {
+    const v = ($('seoNewKw').value||'').trim();
+    if (!v) return;
+    if (!this.data.some(k=>k.keyword===v)) this.data.push({keyword:v, lang:'fa', latest:null, history:[]});
+    $('seoNewKw').value='';
+    this.renderInputs();
+  },
+  async save() {
+    const entries = [...document.querySelectorAll('.seo-pos')].map(el=>({
+      keyword: el.dataset.kw, lang: el.dataset.lang, position: el.value.trim()
+    })).filter(e=>e.position!=='');
+    if (!entries.length) { $('seoSaveMsg').textContent='Enter at least one position.'; return; }
+    const captured_at = ($('seoDate').value||'') + ' 12:00:00';
+    try {
+      const r = await api.post({action:'seo-rank-record', entries, captured_at, source:'manual'});
+      $('seoSaveMsg').textContent = `Saved ${r.recorded} position(s).`;
+      toast('Snapshot saved','success');
+      this.load();
+    } catch(e){ toast('Save failed: '+e.message,'error'); }
   },
 };
 
@@ -3336,12 +4144,23 @@ window.devDetail = async function(did) {
       kv('First seen', esc(dev.created_at)),
       kv('Last seen', `${esc(dev.last_seen)} (${fmtRelative(dev.last_seen)})`),
     ].join('');
-    const sess = (d.sessions||[]).slice(0,10).map(s=>{
+    // Traffic summary across the reported sessions — so the total is visible
+    // even when individual sessions lack byte data (iOS, or short/idle Android).
+    const allSess = d.sessions || [];
+    const sumRecv = allSess.reduce((a,s)=>a+(s.bytes_recv||0),0);
+    const sumSent = allSess.reduce((a,s)=>a+(s.bytes_sent||0),0);
+    const sessTraffic = (sumRecv+sumSent) > 0
+      ? `<span style="font-family:var(--mono);color:var(--ok)">↓${fmtBytes(sumRecv)} ↑${fmtBytes(sumSent)}</span> across ${allSess.length} session(s)`
+      : (isIos ? `<span style="color:var(--muted-2)">per-session bytes aren't tracked on iOS — see the Quota row above for total plan usage</span>`
+               : `<span style="color:var(--muted-2)">no per-session traffic reported yet</span>`);
+    const sess = allSess.slice(0,10).map(s=>{
       const hasBytes = (s.bytes_recv||0)+(s.bytes_sent||0) > 0;
+      const idle = !hasBytes && (s.duration_secs||0) > 0;
       const trafficCell = hasBytes
         ? `<span style="font-family:var(--mono)">↓${fmtBytes(s.bytes_recv)} ↑${fmtBytes(s.bytes_sent)}</span>`
-        : (isIos ? `<span style="color:var(--muted-2)" title="iOS proxy — byte counting not available">—</span>`
-                 : `<span style="color:var(--muted-2)">—</span>`);
+        : (isIos ? `<span style="color:var(--muted-2)" title="iOS proxy — byte counting not available">not tracked (iOS)</span>`
+                 : (idle ? `<span style="color:var(--muted-2)" title="connected but no measured traffic">idle</span>`
+                         : `<span style="color:var(--muted-2)">—</span>`));
       return `<tr>
         <td style="font-size:.68rem">${fmtRelative(s.ended_at)}</td>
         <td style="font-size:.68rem">${protoBadge(s.protocol)}</td>
@@ -3355,6 +4174,7 @@ window.devDetail = async function(did) {
     $('devDetailBody').innerHTML = `
       ${devRows}
       <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">RECENT SESSIONS <span style="font-weight:400;color:var(--muted-2)">— this device only</span></div>
+      <div style="font-size:.7rem;margin:.25rem 0 .1rem">Session traffic: ${sessTraffic}</div>
       <table class="tbl" style="margin-top:.3rem"><thead><tr>
         <th>When</th><th>Protocol</th><th>Traffic</th><th>Duration</th><th>Probe</th><th>Error</th><th>Reported from</th>
       </tr></thead><tbody>${sess}</tbody></table>
@@ -4199,6 +5019,135 @@ $('cfgTestBootstrap').onclick = async()=>{
   }
 };
 
+// ── VIEW: HAKIM ADMIN ────────────────────────────────────────────────
+// Every field reads hakim-bot's actual running state (systemctl, hakim.db)
+// via the hakim-status API action — never a plausible invented status.
+// See ADMIN_NOC_ROADMAP.md § 8.0/§ 8.11.
+views.hakim = {
+  init() { this.load(); },
+  async load() {
+    try {
+      const d = await api.get('hakim-status');
+      const dot = $('hakimStatusDot');
+      dot.className = 'dot ' + (d.bot_status === 'active' ? 'dot-ok' : d.bot_status === 'unknown' ? 'dot-unk' : 'dot-bad');
+      $('hakimStatusText').textContent = d.bot_status === 'active' ? 'Online' : d.bot_status === 'unknown' ? 'Unknown' : 'Offline';
+      $('hakimModel').textContent = d.provider ? `${d.provider} (${d.model || '?'})` : '—';
+      $('hakimActiveFlag').textContent = d.bot_active === null ? '—' : (d.bot_active ? 'true' : 'false');
+      $('hakimLastUpdate').textContent = d.config_updated_at || '—';
+      $('hakimReqTotal').textContent = d.messages_in ?? '—';
+      $('hakimUserCount').textContent = d.user_count ?? '—';
+      if (d.requests_logged > 0) {
+        $('hakimSuccessRate').textContent = d.success_rate != null ? `${d.success_rate}%` : '—';
+        $('hakimAvgLatency').textContent = d.avg_latency_ms != null ? `${d.avg_latency_ms} ms` : '—';
+        $('hakimReqNote').textContent = `Based on ${d.requests_logged} instrumented request(s) since the last bot restart.`;
+      } else {
+        $('hakimSuccessRate').textContent = 'No data yet';
+        $('hakimAvgLatency').textContent = 'No data yet';
+        $('hakimReqNote').textContent = 'Instrumentation was added 2026-07-17 but hakim-bot has not been restarted since — success rate and latency need a restart to start collecting.';
+      }
+      $('hakimErrorCount').textContent = `${(d.recent_errors||[]).length} shown`;
+      $('hakimErrorList').innerHTML = (d.recent_errors||[]).length
+        ? d.recent_errors.map(e => `
+          <div style="padding:.4rem .6rem;border-bottom:1px solid var(--border);font-size:.75rem">
+            <span style="color:var(--muted-2)">${esc(e.ts)}</span> —
+            <span style="color:var(--danger)">${esc(e.error||'unknown')}</span>
+            (provider: ${esc(e.provider)}${e.fallback_used ? ', fallback' : ''})
+          </div>`).join('')
+        : `<div class="panel-empty">No errors logged${d.requests_logged>0?'':' — no instrumented requests yet'}.</div>`;
+      $('hakimKnowledge').textContent = d.knowledge_summary || '—';
+    } catch(e) { toast('Hakim: '+e.message,'error'); }
+  },
+};
+$('hakimTestBtn')?.addEventListener('click', async () => {
+  const q = $('hakimTestQuestion').value.trim();
+  if (!q) return;
+  const resultEl = $('hakimTestResult');
+  resultEl.textContent = 'Asking Hakim… (real API call, a few seconds)';
+  try {
+    const d = await api.get('hakim-test-query', {question: q});
+    resultEl.textContent = d.answer || '(empty response)';
+  } catch(e) {
+    resultEl.textContent = 'Error: ' + e.message;
+  }
+});
+
+// ── VIEW: WALLET ─────────────────────────────────────────────────────
+// Local quota ledger only — see the on-page note re: REAL/ZAR living on
+// a different backend entirely. Never blends the two. Reuses the shared
+// fmtBytes() helper (defined near the top of this script) for display.
+views.wallet = {
+  init() { this.load(); },
+  async load() {
+    try {
+      const d = await api.get('wallet-overview');
+      $('wGranted').textContent = fmtBytes(d.total_granted_bytes);
+      $('wUsed').textContent    = fmtBytes(d.total_used_bytes);
+      $('wDevices').textContent = d.wallet_devices;
+      $('wTransferCount').textContent = d.transfer_count;
+      $('wTransferBytes').textContent = fmtBytes(d.transfer_bytes) + ' moved';
+
+      const labels = {
+        starter_bonus: 'Starter bonus', referral: 'Referral', purchase: 'Purchase',
+        ad_reward: 'Ad reward', promotion: 'Promotion',
+        transfer_in: 'Transfer in', transfer_out: 'Transfer out',
+        admin_adjustment: 'Admin adjustment',
+      };
+      $('wBreakdownBody').innerHTML = Object.entries(labels).map(([key, label]) => {
+        const row = d.breakdown[key] || {bytes: 0, count: 0};
+        return `<tr><td>${esc(label)}</td><td>${fmtBytes(row.bytes)}</td><td>${row.count}</td></tr>`;
+      }).join('');
+
+      $('wTopBody').innerHTML = (d.top_wallets || []).length
+        ? d.top_wallets.map(w => `
+          <tr><td>${esc(w.user_id || w.device_id)}</td><td>${esc(w.plan||'free')}</td>
+              <td>${fmtBytes(w.quota_bytes_total)}</td><td>${fmtBytes(w.quota_bytes_used)}</td></tr>`).join('')
+        : '<tr><td colspan="4" style="opacity:.6">No devices yet.</td></tr>';
+
+      $('wTransfersBody').innerHTML = (d.recent_transfers || []).length
+        ? d.recent_transfers.map(t => `
+          <tr><td>${esc(t.sender_device)}</td><td>${esc(t.receiver_device)}</td>
+              <td>${fmtBytes(t.bytes)}</td><td>${esc(t.created_at)}</td></tr>`).join('')
+        : '<tr><td colspan="4" style="opacity:.6">No transfers yet.</td></tr>';
+    } catch(e) { toast('Wallet: '+e.message,'error'); }
+  },
+};
+
+// ── VIEW: API STATUS ─────────────────────────────────────────────────
+views.apistatus = {
+  init() { this.load(); },
+  async load() {
+    const setDot = (id, ok) => {
+      const el = $(id); if (!el) return;
+      el.className = 'dot ' + (ok===true?'dot-ok':ok===false?'dot-bad':'dot-unk');
+    };
+    try {
+      const d = await api.get('api-status');
+      setDot('asXrayDot',  d.local.xray);
+      setDot('asNginxDot', d.local.nginx);
+      setDot('asPortDot',  d.local.port_8443);
+
+      $('asEcoConfigured').textContent = d.ecosystem_api.configured ? 'yes' : 'no';
+      setDot('asEcoDot', d.ecosystem_api.reachable);
+      $('asEcoSecret').textContent = d.ecosystem_api.link_secret_configured ? 'set' : 'not set';
+      $('asEcoKey').textContent    = d.ecosystem_api.api_key_configured ? 'set' : 'not set';
+      $('asEcoUrl').textContent    = d.ecosystem_api.url
+        ? `URL: ${d.ecosystem_api.url}`
+        : 'Not configured — reachability not checked.';
+
+      $('asAdmobConfigured').textContent = d.admob.configured ? 'yes' : 'no';
+      $('asAdmobSsv').textContent        = d.admob.ssv_enabled ? 'enabled' : 'disabled';
+
+      $('asGscLast').textContent = d.gsc.last_sync
+        ? `Last sync: ${d.gsc.last_sync}`
+        : 'Never synced (or gsc_last_sync not set).';
+
+      setDot('asHakimDot', d.hakim_bot.status === 'active' ? true : d.hakim_bot.status === 'unknown' ? null : false);
+      $('asHakimText').textContent = d.hakim_bot.status;
+      $('asHakimNote').textContent = d.hakim_bot.topology_note;
+    } catch(e) { toast('API Status: '+e.message,'error'); }
+  },
+};
+
 // ── VIEW: REFERRALS ──────────────────────────────────────────────────
 views.referrals = {
   init() { this.load(); refreshTimer = setInterval(()=>this.load(), 30000); },
@@ -4334,6 +5283,56 @@ views.referrals = {
 function debounce(fn, ms) {
   let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); };
 }
+
+// ── Global user search (topbar) — live results on partial IDs ───────
+(() => {
+  const inp = $('gSearch'), drop = $('gSearchDrop'), wrap = $('gSearchWrap');
+  if (!inp) return;
+  let items = [], sel = -1, seq = 0;
+  const close = () => { drop.hidden = true; drop.innerHTML = ''; sel = -1; items = []; };
+  const pick = i => {
+    const r = items[i];
+    if (!r) return;
+    close(); inp.blur();
+    devDetail(r.device_id);
+  };
+  const render = () => {
+    drop.innerHTML = items.length
+      ? items.map((r, i) => {
+          const uid = r.user_id || r.device_id.substring(0, 16);
+          return `<div class="gsearch-item${i === sel ? ' sel' : ''}" data-i="${i}">
+            <span class="dot ${r.is_online ? 'dot-ok' : 'dot-unk'}"></span>
+            <span class="gsearch-uid">${esc(uid)}</span>
+            <span class="gsearch-meta">${countryFlag(r.country || '')} ${esc(r.platform || '?')} · ${esc(r.plan || '')} · ${fmtRelative(r.last_seen)}</span>
+          </div>`;
+        }).join('')
+      : '<div class="gsearch-empty">No users match</div>';
+    drop.hidden = false;
+    drop.querySelectorAll('.gsearch-item').forEach(el => {
+      // mousedown (not click) so the input's blur can't race the selection
+      el.onmousedown = e => { e.preventDefault(); pick(+el.dataset.i); };
+    });
+  };
+  const run = debounce(async () => {
+    const q = inp.value.trim();
+    if (q.length < 2) { close(); return; }
+    const mySeq = ++seq;
+    try {
+      const d = await api.get('user-search', {q});
+      if (mySeq !== seq) return; // a newer keystroke's response wins
+      items = d.results || []; sel = items.length ? 0 : -1; render();
+    } catch (_) { /* keep quiet while typing */ }
+  }, 150);
+  inp.oninput = run;
+  inp.onfocus = () => { if (inp.value.trim().length >= 2) run(); };
+  inp.onkeydown = e => {
+    if (e.key === 'ArrowDown')    { sel = Math.min(sel + 1, items.length - 1); render(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); render(); e.preventDefault(); }
+    else if (e.key === 'Enter')   { if (sel >= 0) pick(sel); }
+    else if (e.key === 'Escape')  { close(); inp.blur(); }
+  };
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) close(); });
+})();
 
 // ── Boot ─────────────────────────────────────────────────────────────
 navigate(INIT_PAGE);

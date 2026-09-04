@@ -18,6 +18,24 @@ export interface ServerRecord {
   comingSoon?:  boolean;
   /** Telemetry-derived success rate (0–100) from the last 7 days. Backend-provided. */
   successScore?: number;
+  /** Node type from the backend catalog (e.g. 'STARLINK'). Display hint only —
+   *  the client always dials the same VLESS address/creds regardless. */
+  nodeType?: string;
+  /** Backend-flagged beta/testing node (e.g. Starlink Phase 1). */
+  beta?: boolean;
+  /** b97: Starlink meta additions from GET /v1/servers (lib/starlink.php
+   *  st_meta() + per-request availability merge in v1.php). available=false
+   *  means the node must render disabled, NOT be hidden — the catalog keeps
+   *  listing it through maintenance/offline so the promo never disappears. */
+  available?:  boolean;
+  status?:     'online' | 'maintenance' | 'offline';
+  statusNote?: string;
+  /** Server-steerable: true renders the distinct gold/satellite hero style
+   *  instead of a normal row, independent of client version. */
+  hero?:       boolean;
+  /** Server-steerable badge chips (e.g. ['NEW','LIMITED']) — can change or
+   *  disappear without an app rebuild. */
+  badges?:     string[];
 }
 
 // Coming-soon placeholder entries — shown greyed out, never selectable
@@ -181,6 +199,13 @@ interface ServerState {
   isLoading:     boolean;
   loadError:     string | null;
   importedCreds: Record<string, ServerCredentials>;  // serverId → creds
+  /** i18n key (e.g. 'conn.autoSwitched') set when fetchServers had to move the
+   *  active selection because the previously-selected node disappeared from
+   *  the catalog (disabled, revoked allowlist, etc.) — e.g. a Starlink test
+   *  node an admin just disabled. A screen may show this once, then clear it
+   *  via clearAutoSwitchNotice(). Never set on first install (no prior
+   *  selection to have moved away from). */
+  autoSwitchNoticeKey: string | null;
 
   // isUser=true (default) records a sticky user preference; failover passes
   // false so it can switch the active node without hijacking that preference.
@@ -191,6 +216,7 @@ interface ServerState {
   setFilter:     (f: FilterTab) => void;
   setQuery:      (q: string) => void;
   fetchServers:  (token: string) => Promise<void>;
+  clearAutoSwitchNotice: () => void;
 
   // Import actions
   importFromVless:        (uri: string) => { success: boolean; error?: string; updated?: boolean };
@@ -224,6 +250,7 @@ function syncToVpnStore(record: ServerRecord): void {
       ping:      record.ping,
       load:      record.load,
       premium:   record.premium ?? false,
+      nodeType:  record.nodeType,
     });
   } catch {}
 }
@@ -238,6 +265,7 @@ export const useServerStore = create<ServerState>()(
   query:         '',
   isLoading:     false,
   loadError:     null,
+  autoSwitchNoticeKey: null,
   // Seed the bundled cf-edge creds so the stealth node is connectable even
   // before (or without) a successful catalog fetch.
   importedCreds: { [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS },
@@ -317,7 +345,9 @@ export const useServerStore = create<ServerState>()(
             .filter((s) => merged.creds[s.id])
             .sort(compareForAutoSelect)[0];
           if (best) {
-            set({ selectedId: best.id });
+            // Only a real switch (not the initial selection on a fresh
+            // install / empty store) warrants telling the user.
+            set({ selectedId: best.id, autoSwitchNoticeKey: prevSelectedId ? 'conn.autoSwitched' : null });
             syncToVpnStore(best);
           }
         }
@@ -638,6 +668,8 @@ export const useServerStore = create<ServerState>()(
   },
 
   getImportedCreds: (serverId) => get().importedCreds[serverId],
+
+  clearAutoSwitchNotice: () => set({ autoSwitchNoticeKey: null }),
 
   filteredServers: (mode = 'auto') => {
     const { servers, filter, query } = get();

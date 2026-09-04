@@ -12,7 +12,6 @@ export type RootStackParamList = {
   Settings:      undefined;
   Diagnostics:   undefined;
   BypassApps:    undefined;
-  Game:          undefined;
   TrustAiLink:   undefined;
   Upgrade:       undefined;
   Inbox:         undefined;
@@ -25,6 +24,7 @@ export type MainTabParamList = {
   AI:       undefined;
   Activity: undefined;
   Profile:  undefined;
+  Game:     undefined;
 };
 
 export type RootNavigationProp = NativeStackNavigationProp<RootStackParamList>;

@@ -18,6 +18,12 @@ export interface VpnServer {
   ping:      number;
   load:      number;
   premium:   boolean;
+  /** Node type from the backend catalog (e.g. 'STARLINK'). Was never carried
+   *  through syncToVpnStore() in stores/serverStore.ts, which silently broke
+   *  every selectedServer?.nodeType === 'STARLINK' check in the app (the
+   *  server-pill Starlink badge in HomeScreen included) — fixed alongside
+   *  this field, see serverStore.ts's syncToVpnStore(). */
+  nodeType?: string;
 }
 
 interface SessionBytes { sent: number; received: number }
@@ -132,6 +138,19 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
       appendMetric({ type: 'connect_success', at: Date.now(), country: server?.country, transport: server?.transport, protocol: server?.protocol });
 
+      // Session-level telemetry: manual connects never reported before this,
+      // so learned routing only saw smart-connect probes (deduped inside).
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { reportSessionOutcome } = require('../services/sessionTelemetry') as typeof import('../services/sessionTelemetry');
+        reportSessionOutcome({
+          ok:        true,
+          nodeId:    server?.id ?? 'primary',
+          protocol:  server ? `${server.protocol}+${server.transport}` : undefined,
+          latencyMs: get().lastPingMs ?? undefined,
+        });
+      } catch {}
+
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useToastStore } = require('./toastStore');
@@ -170,7 +189,17 @@ export const useVpnStore = create<VpnState>((set, get) => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { scheduleQuicEvidenceProbe } = require('../services/quicEvidenceService') as typeof import('../services/quicEvidenceService');
-        scheduleQuicEvidenceProbe(server?.id, () => get().connectionState === 'connected');
+        // Vision-flow servers reject UDP/443 on the main proxy outbound, so
+        // the config routes their QUIC leg through the flow-less twin
+        // 'proxy-quic' instead (see buildQuicProxyOutbound in
+        // xrayConfigBuilder.ts) — report which one so the Instagram
+        // diagnostics telemetry (2026-07-17) reflects the path actually in
+        // effect for this connection, not a hardcoded guess.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useServerStore: _useServerStoreForQuic } = require('./serverStore') as typeof import('./serverStore');
+        const creds = server ? _useServerStoreForQuic.getState().getImportedCreds(server.id) : null;
+        const quicOutboundTag = creds?.flow === 'xtls-rprx-vision' ? 'proxy-quic' : 'proxy';
+        scheduleQuicEvidenceProbe(server?.id, () => get().connectionState === 'connected', quicOutboundTag);
       } catch {}
 
       try {
@@ -400,6 +429,17 @@ export const useVpnStore = create<VpnState>((set, get) => {
       // All nodes and protocols exhausted — surface the final error.
       set({ _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], error: analysis.userMessage, smartStatus: null });
       appendMetric({ type: message.toLowerCase().includes('routing') ? 'routing_failed' : 'connect_failed', at: Date.now(), reason: message, country: get().selectedServer?.country });
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { reportSessionOutcome } = require('../services/sessionTelemetry') as typeof import('../services/sessionTelemetry');
+        const srv = get().selectedServer;
+        reportSessionOutcome({
+          ok:            false,
+          nodeId:        srv?.id ?? 'primary',
+          protocol:      srv ? `${srv.protocol}+${srv.transport}` : undefined,
+          errorCategory: analysis.category,
+        });
+      } catch {}
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { getLastConnectLog, uploadTunnelLog } = require('../services/vpnBridge');
