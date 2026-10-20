@@ -3,7 +3,9 @@ package com.setalink.vpn
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
@@ -11,6 +13,8 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.setalink.notification.NotificationHelper
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileWriter
 import java.io.RandomAccessFile
@@ -101,6 +105,7 @@ class XrayVpnService : VpnService() {
          *  no instance exists (caller should fall back to the stop intent). */
         fun requestStop(): Boolean {
             val inst = activeInstance ?: return false
+            inst.desiredConfigJson = null
             Thread { inst.tearDownTunnel("module-direct") }.start()
             return true
         }
@@ -124,6 +129,35 @@ class XrayVpnService : VpnService() {
     private var tun2socksPid:  Int?                  = null
     private var connectJob:    Job?                  = null
     private var probeRecheckJob: Job?                = null
+    private var metricsJob: Job? = null
+    private var watchdogJob: Job? = null
+    private var tunnelLogJob: Job? = null
+    private var handoverJob: Job? = null
+    private val handoverMutex = Mutex()
+    private val handoverState = NetworkHandoverState()
+    @Volatile private var desiredConfigJson: String? = null
+    @Volatile private var desiredEmergencyMode = false
+    @Volatile private var networkMonitorRegistered = false
+    @Volatile private var upstreamNetwork: Network? = null
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            if (!networkMonitorRegistered) return
+            val token = handoverState.available(network.networkHandle)
+            if (!handoverState.accepts(network.networkHandle)) return
+            upstreamNetwork = network
+            runCatching { setUnderlyingNetworks(arrayOf(network)) }
+            if (token != null) scheduleNetworkRecovery(network, token)
+        }
+
+        override fun onLost(network: Network) {
+            if (!handoverState.lost(network.networkHandle)) return
+            upstreamNetwork = null
+            handoverJob?.cancel()
+            // Wait for a physical network to return instead of looping through servers offline.
+            runCatching { setUnderlyingNetworks(null) }
+        }
+    }
     // REAL SSH (transport 'real_ssh') — non-null only when this session's
     // SOCKS backend is the SSH bridge instead of Xray.
     private var realSshTunnel: RealSshTunnel?         = null
@@ -166,8 +200,12 @@ class XrayVpnService : VpnService() {
                     ?: return broadcastError("No config provided").let { START_NOT_STICKY }
                 val emergency = intent.getBooleanExtra(EXTRA_EMERGENCY_MODE, false)
 
+                desiredConfigJson = config
+                desiredEmergencyMode = emergency
+                handoverJob?.cancel()
                 killStaleProcesses()
                 tearingDown.set(false)
+                startNetworkMonitor()
                 connectJob = scope.launch { establishTunnel(config, emergency) }
             }
             ACTION_STOP -> Thread { tearDownTunnel("stop-intent") }.start()
@@ -191,7 +229,9 @@ class XrayVpnService : VpnService() {
 
     // ── Tunnel setup ──────────────────────────────────────────────────────────
 
-    private suspend fun establishTunnel(configJson: String, emergencyMode: Boolean) {
+    private suspend fun establishTunnel(configJson: String, emergencyMode: Boolean, handover: Boolean = false) {
+        currentCoroutineContext().ensureActive()
+        if (desiredConfigJson != configJson) return
         try { File(filesDir, XRAY_LOG_FILE).writeText("") } catch (_: Exception) {}
         try { File(filesDir, TUN2SOCKS_LOG_FILE).writeText("") } catch (_: Exception) {}
 
@@ -201,7 +241,7 @@ class XrayVpnService : VpnService() {
 
         // Snapshot network type at connect start for switch detection at teardown.
         connectNetworkType = detectNetworkType()
-        networkSwitched    = false
+        networkSwitched    = handover
         serverRttMs        = null
         serverIpVersion    = "unknown"
         appendLog("[DIAG] connectNetworkType=$connectNetworkType")
@@ -380,6 +420,7 @@ class XrayVpnService : VpnService() {
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
                 .setMtu(mtu)
+            upstreamNetwork?.let { vpnBuilder.setUnderlyingNetworks(arrayOf(it)) }
 
             if (!emergencyMode) {
                 vpnBuilder.addDnsServer("8.8.8.8")
@@ -470,7 +511,8 @@ class XrayVpnService : VpnService() {
             appendLog("[tun2socks] forked pid=$pid")
 
             // Start streaming tun2socks.log → xray.log
-            scope.launch { tailTun2socksLog() }
+            tunnelLogJob?.cancel()
+            tunnelLogJob = scope.launch { tailTun2socksLog() }
 
             // Wait for tun2socks to initialise
             delay(2_000L)
@@ -528,6 +570,8 @@ class XrayVpnService : VpnService() {
             sendBroadcast(Intent(BROADCAST_CONNECTED).apply {
                 setPackage(packageName)
                 putExtra("probe_ok",    true)
+                // Native handover preserves the JS session and cumulative traffic accounting.
+                putExtra("probe_update", handover)
                 putExtra("rtt_ms",      serverRttMs ?: -1L)
                 putExtra("ip_version",  serverIpVersion)
             })
@@ -549,6 +593,8 @@ class XrayVpnService : VpnService() {
                 startProbeRecheckLoop(tunInterface)
             }
 
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Tunnel setup failed: ${e.message}", e)
             appendLog("[TUNNEL FAILED] ${e.message}")
@@ -1096,7 +1142,8 @@ class XrayVpnService : VpnService() {
     // ── Periodic metrics loop ─────────────────────────────────────────────────
 
     private fun startMetricsLoop(tunInterface: String?) {
-        scope.launch {
+        metricsJob?.cancel()
+        metricsJob = scope.launch {
             var lastRx = readInterfaceBytes(tunInterface ?: "")?.first  ?: 0L
             var lastTx = readInterfaceBytes(tunInterface ?: "")?.second ?: 0L
             var iteration = 0
@@ -1170,7 +1217,8 @@ class XrayVpnService : VpnService() {
     // ── Process watchdog ──────────────────────────────────────────────────────
 
     private fun startWatchdog() {
-        scope.launch {
+        watchdogJob?.cancel()
+        watchdogJob = scope.launch {
             while (isActive) {
                 delay(3_000L)
                 if (tearingDown.get()) break
@@ -1367,7 +1415,14 @@ class XrayVpnService : VpnService() {
         return !cond()
     }
 
-    internal fun tearDownTunnel(reason: String = "unspecified") {
+    internal fun tearDownTunnel(reason: String = "unspecified", stopService: Boolean = true) {
+        if (stopService) {
+            // Clear the desired connection BEFORE the idempotency guard: a user stop
+            // must also win while a handover cleanup is already in progress.
+            desiredConfigJson = null
+            stopNetworkMonitor()
+            handoverJob?.cancel()
+        }
         if (!tearingDown.compareAndSet(false, true)) {
             appendLog("[DISCONNECT] already in progress — ignoring duplicate ($reason)")
             return
@@ -1380,6 +1435,12 @@ class XrayVpnService : VpnService() {
         connectJob = null
         runCatching { probeRecheckJob?.cancel() }
         probeRecheckJob = null
+        metricsJob?.cancel()
+        metricsJob = null
+        watchdogJob?.cancel()
+        watchdogJob = null
+        tunnelLogJob?.cancel()
+        tunnelLogJob = null
 
         // 1. Stop tun2socks FIRST — it holds the TUN fd; while it lives the
         //    kernel keeps the tun device (and the system VPN state) alive.
@@ -1436,14 +1497,16 @@ class XrayVpnService : VpnService() {
             appendLog("[DISCONNECT] network changed: $connectNetworkType → $currentNetwork")
         }
         lastNetworkSwitched = networkSwitched
-        sendBroadcast(Intent(BROADCAST_DISCONNECTED).apply {
-            setPackage(packageName)
-            putExtra("network_switched", networkSwitched)
-        })
-        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
-        Log.i(TAG, "SETALINK_VPN_SERVICE_STOPPED")
-        appendLog("[VPN_SERVICE_STOPPED]")
-        runCatching { stopSelf() }
+        if (stopService || desiredConfigJson == null) {
+            sendBroadcast(Intent(BROADCAST_DISCONNECTED).apply {
+                setPackage(packageName)
+                putExtra("network_switched", networkSwitched)
+            })
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            Log.i(TAG, "SETALINK_VPN_SERVICE_STOPPED")
+            appendLog("[VPN_SERVICE_STOPPED]")
+            runCatching { stopSelf() }
+        }
 
         Log.i(TAG, "SETALINK_DISCONNECT_COMPLETE reason=$reason")
         appendLog("[DISCONNECT_COMPLETE] reason=$reason")
@@ -1451,6 +1514,60 @@ class XrayVpnService : VpnService() {
     }
 
     // ── Broadcast helpers ─────────────────────────────────────────────────────
+
+    private fun startNetworkMonitor() {
+        if (networkMonitorRegistered) return
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        handoverState.start()
+        networkMonitorRegistered = true
+        try {
+            // A request for the best physical upstream excludes our own VPN and
+            // avoids reacting to every concurrently available Wi-Fi/mobile network.
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .build()
+            cm.requestNetwork(request, networkCallback)
+        } catch (e: Exception) {
+            networkMonitorRegistered = false
+            handoverState.stop()
+            appendLog("[NETWORK] monitor unavailable: ${e.message}")
+        }
+    }
+
+    private fun stopNetworkMonitor() {
+        handoverState.stop()
+        upstreamNetwork = null
+        if (!networkMonitorRegistered) return
+        networkMonitorRegistered = false
+        runCatching {
+            (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager)
+                .unregisterNetworkCallback(networkCallback)
+        }
+    }
+
+    private fun scheduleNetworkRecovery(network: Network, token: Long) {
+        handoverJob?.cancel()
+        handoverJob = scope.launch {
+            delay(1_000L)
+            handoverMutex.withLock {
+                if (!handoverState.isCurrent(token, network.networkHandle)) return@withLock
+                val config = desiredConfigJson ?: return@withLock
+                val emergency = desiredEmergencyMode
+                appendLog("[NETWORK] physical upstream changed — rebuilding tunnel")
+                broadcastStep("network_handover", true, "Restoring connection after network change")
+                connectJob?.cancelAndJoin()
+                // Cleanup must finish even if another upstream arrives during it.
+                // Its replacement job waits for this mutex before starting anything.
+                withContext(NonCancellable) { tearDownTunnel("network-handover", stopService = false) }
+                currentCoroutineContext().ensureActive()
+                if (desiredConfigJson != config || !handoverState.isCurrent(token, network.networkHandle)) return@withLock
+                networkSwitched = true
+                lastNetworkSwitched = true
+                connectJob = scope.launch { establishTunnel(config, emergency, handover = true) }
+            }
+        }
+    }
 
     // Scans the Xray log to classify the transport failure category.
     // Categories map to admin failure_category field and help diagnose server-side errors.

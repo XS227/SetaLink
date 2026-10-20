@@ -36,8 +36,8 @@ android {
         applicationId "com.setalink"
         minSdk         rootProject.ext.minSdkVersion
         targetSdk      rootProject.ext.targetSdkVersion
-        versionCode    187
-        versionName    "0.9.147"
+        versionCode    188
+        versionName    "0.9.148"
 
         manifestPlaceholders = [appLabel: "@string/app_name"]
 
@@ -131,6 +131,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation("com.facebook.react:react-android")
     implementation("com.facebook.react:hermes-android")
 

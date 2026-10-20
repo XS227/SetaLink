@@ -29,6 +29,7 @@ interface SessionBytes { sent: number; received: number }
 // Ordered protocol fallback for auto-connect: Reality → XHTTP → WebSocket.
 // Each entry is the protocol string that buildXrayConfigJson understands.
 const FALLBACK_PROTOCOLS = ['Reality', 'XHTTP', 'WebSocket'] as const;
+const STABLE_CONNECTION_MS = 60_000;
 
 // Periodic "still connected" heartbeat. Without it the panel only hears from
 // a device at connect/disconnect, so the admin online count reads 0 for
@@ -139,6 +140,39 @@ interface VpnState {
 // No default server — user must import a real VLESS config before connecting.
 
 export const useVpnStore = create<VpnState>((set, get) => {
+  let stabilityTimer: ReturnType<typeof setTimeout> | null = null;
+  let stabilityGeneration = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function cancelStabilityReset() {
+    stabilityGeneration++;
+    if (stabilityTimer) clearTimeout(stabilityTimer);
+    stabilityTimer = null;
+  }
+
+  function scheduleReconnect(delayMs: number) {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (!get()._userInitiatedDisconnect) machine.send('CONNECT');
+    }, delayMs);
+  }
+
+  function resetFailuresAfterStableConnection() {
+    cancelStabilityReset();
+    const generation = stabilityGeneration;
+    stabilityTimer = setTimeout(async () => {
+      stabilityTimer = null;
+      try {
+        const healthy = await getAdapter().getProbeResult?.();
+        if (healthy && generation === stabilityGeneration &&
+            get().connectionState === 'connected' && !get().internetDegraded) {
+          set({ _unexpectedDropCount: 0, _triedNodeIds: [] });
+        }
+      } catch { /* Unconfirmed health must not erase the failure history. */ }
+    }, STABLE_CONNECTION_MS);
+  }
+
   // Try the next-best untried node (successScore-ranked, carrier/region-aware
   // via the backend's /v1/servers scoring — see lib/geo.php + node_intel.php
   // on the server side). Shared by onError (initial CONNECT never succeeded)
@@ -218,7 +252,14 @@ export const useVpnStore = create<VpnState>((set, get) => {
         error: null,
       });
       sst.selectServer(nextServer.id, false);  // active-only; keep user's preference
-      machine.send('DISCONNECT');
+      if (machine.getState() === 'idle') {
+        // An unexpected disconnect has already completed teardown. DISCONNECT
+        // is ignored in idle, so schedule the next node directly in that case.
+        set({ isSwitchingServer: false });
+        scheduleReconnect(350);
+      } else {
+        machine.send('DISCONNECT');
+      }
       return true;
     } catch {
       return false;
@@ -248,6 +289,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
   // Machine lives in closure — one instance per store, survives re-renders
   const machine = new ConnectionMachine({
     onStateChange: (next, _prev) => {
+      if (next !== 'connected') cancelStabilityReset();
       set({ connectionState: next });
     },
 
@@ -264,9 +306,10 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
       set({
         sessionStartedAt: Date.now(), error: null, smartStatus: null,
-        _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], _unexpectedDropCount: 0,
+        _fallbackActive: false, _fallbackIdx: 0,
         activeProtocol, activeTransport, internetDegraded: false,
       });
+      resetFailuresAfterStableConnection();
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { getLastConnectLog, uploadTunnelLog } = require('../services/vpnBridge');
@@ -545,11 +588,13 @@ export const useVpnStore = create<VpnState>((set, get) => {
         // Manual REAL SSH pick: never silently reroute away — see
         // isManualRealSshSelection(). Keep retrying the same node so the
         // user can see the drop instead of waking up on Helsinki.
-        if (drops >= 2 && !isManualRealSshSelection() && tryNodeFailover()) {
+        if (drops >= 2 && !isManualRealSshSelection()) {
+          if (tryNodeFailover()) return;
+          set({ smartStatus: null, error: 'Connection remains unstable — please select another server.' });
           return;
         }
         set({ smartStatus: 'Connection dropped — reconnecting…' });
-        setTimeout(() => machine.send('CONNECT'), 600);
+        scheduleReconnect(600);
         return;
       }
       set({ _userInitiatedDisconnect: false });
@@ -566,7 +611,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
             'info'
           );
         } catch {}
-        setTimeout(() => machine.send('CONNECT'), 350);
+        scheduleReconnect(350);
         return;
       }
 
@@ -620,7 +665,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
           const { getLastConnectLog } = require('../services/vpnBridge');
           set({ connectionLog: getLastConnectLog() });
         } catch {}
-        setTimeout(() => machine.send('CONNECT'), 800);
+        scheduleReconnect(800);
         return;
       }
 
@@ -822,9 +867,13 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     disconnect: () => {
+      cancelStabilityReset();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = null;
       // Marks this as a deliberate stop so onDisconnected doesn't mistake it
       // for an unexpected drop and try to auto-reconnect / fail over.
-      set({ _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], smartStatus: null, _userInitiatedDisconnect: true });
+      set({ _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], _unexpectedDropCount: 0,
+            isSwitchingServer: false, smartStatus: null, _userInitiatedDisconnect: true });
       machine.send('DISCONNECT');
     },
 

@@ -55,6 +55,10 @@ jobs:
         working-directory: mobile-app
         run: npm install
 
+      - name: Test VPN recovery
+        working-directory: mobile-app
+        run: npm test -- --runInBand src/__tests__/vpnStoreRecovery.test.ts src/__tests__/connectionMachine.test.ts src/__tests__/useVpnStatsTrafficStall.test.tsx
+
       # ── Android build setup ─────────────────────────────────────────────────
       - name: Download Gradle wrapper jar
         working-directory: mobile-app/android
@@ -101,7 +105,7 @@ jobs:
       # ── Build ────────────────────────────────────────────────────────────────
       - name: Build release APKs
         working-directory: mobile-app/android
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew testReleaseUnitTest assembleRelease --stacktrace
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false"
           ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.1.10909125
