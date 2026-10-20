@@ -20,8 +20,11 @@ assert re.fullmatch(r'[a-f0-9]{64}', args.sha256), 'Invalid SHA-256'
 
 
 def digest(path):
+    result = hashlib.sha256()
     with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            result.update(chunk)
+    return result.hexdigest()
 
 
 assert digest(args.apk) == args.sha256, 'APK integrity mismatch'
