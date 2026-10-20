@@ -12,6 +12,8 @@ on:
 jobs:
   build-release:
     name: Build release APKs
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -133,6 +135,12 @@ jobs:
       - name: Print APK sizes
         working-directory: mobile-app/android/app/build/outputs/apk/release
         run: du -sh *.apk
+
+      - name: Publish verified Android downloads
+        run: bash scripts/publish-android.sh mobile-app/android/app/build/outputs/apk/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANDROID_BUILD_TOOLS: ${{ env.ANDROID_SDK_ROOT }}/build-tools/34.0.0
 
       # Always remove the decoded signing material from the runner workspace.
       - name: Clean up signing material
