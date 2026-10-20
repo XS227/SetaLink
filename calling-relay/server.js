@@ -44,9 +44,30 @@
 
 const http = require('http');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { WebSocketServer } = require('ws'); // npm install ws — not yet run on this box
 const { verifyVoucher } = require('./voucher.js');
 const { PresenceRegistry } = require('./presence.js');
+
+// pm2's saved dump only replays env vars it was explicitly given (an
+// ecosystem `env` block, or `--env`) — ambient vars exported in the shell
+// at `pm2 start` time are NOT persisted, so `pm2 resurrect`/a host reboot
+// silently drops CALLING_RELAY_SECRET and crash-loops (seen in production
+// 2026-08-31). Load .env.local directly so this process is self-sufficient
+// regardless of how pm2 launches it; real env still wins over the file.
+(function loadEnvLocal() {
+  const envPath = path.join(__dirname, '.env.local');
+  if (!fs.existsSync(envPath)) return;
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    if (!(key in process.env)) process.env[key] = trimmed.slice(eq + 1).trim();
+  }
+})();
 
 const PORT = parseInt(process.env.CALLING_RELAY_PORT || '8095', 10);
 const INTERNAL_PORT = parseInt(process.env.CALLING_RELAY_INTERNAL_PORT || '8096', 10);

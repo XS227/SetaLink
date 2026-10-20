@@ -13,7 +13,14 @@
 // since re-enabling wasn't part of the original ask — Khabat noticed the
 // call button missing from v0.9.110 and flagged it, same "re-enable once
 // cleared" call already made for Live TV in (199). Re-enabled.
-export const CALLING_ENABLED = true;
+//
+// 2026-08-24: react-native-webrtc has no Windows implementation (confirmed,
+// no plan to add one — github.com/react-native-webrtc/react-native-webrtc
+// issue #952). RealGram for Windows is chat-only for this reason — excluded
+// here, the single choke point both CallManager and InboxScreen's call
+// button already read, rather than adding a Platform.OS check to each.
+import { Platform } from 'react-native';
+export const CALLING_ENABLED = true && Platform.OS !== 'windows';
 
 // Screen sharing in RealGram calls -- Khabat's 2026-08-01 spec, §9: "ikke
 // publiser direkte til alle brukere. Bygg først en intern testversjon."

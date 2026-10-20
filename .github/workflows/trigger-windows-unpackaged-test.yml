@@ -1,0 +1,21 @@
+name: Trigger Windows unpackaged test
+
+on:
+  push:
+    branches:
+      - fix/windows-unpackaged-launch
+    paths:
+      - .github/workflows/trigger-windows-unpackaged-test.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch existing Windows release workflow on this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release-windows.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"
