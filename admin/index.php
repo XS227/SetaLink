@@ -599,7 +599,7 @@ function icon(string $name): string {
       <div class="panel" style="margin-bottom:1rem">
         <div class="panel-body" style="font-size:.82rem;color:var(--muted)">
           Track where target search terms rank on Google over time. Lower position = better (1 = top).
-          Real positions come from Google Search Console; you can also log a manual snapshot below.
+          Google positions are averages for observed searches, not a fixed rank for every user. No query data means Google returned no measurable query row; it does not prove a page is unindexed or outside the top 100. Historical observations and manual snapshots remain visible with their dates.
           <span style="color:var(--muted-2)">Δ vs previous: green = moved up.</span>
         </div>
       </div>
@@ -609,7 +609,7 @@ function icon(string $name): string {
         <div class="panel-body">
           <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
             <label style="font-size:.8rem;color:var(--muted)">Property
-              <input type="text" id="gscSite" class="input" style="width:230px" placeholder="https://setalink.no/">
+              <input type="text" id="gscSite" class="input" style="width:230px" placeholder="sc-domain:realgram.no">
             </label>
             <button class="btn btn-ghost" id="gscSaveBtn" type="button">Save</button>
             <button class="btn btn-primary" id="gscSyncBtn" type="button">Sync from Search Console</button>
@@ -633,7 +633,7 @@ function icon(string $name): string {
       </div>
 
       <div class="panel" style="margin-top:.7rem">
-        <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Search Performance <span class="panel-sub">clicks &amp; impressions per day, all tracked keywords</span></span></div>
+        <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Search Performance <span class="panel-sub">last 28 finalized days · whole property, including anonymized queries</span></span></div>
         <div class="panel-body">
           <div id="seoOverviewEmpty" class="panel-empty" style="display:none">No Search Console data yet — sync above once a property is connected.</div>
           <div style="position:relative;height:280px"><canvas id="seoOverviewChart"></canvas></div>
@@ -649,7 +649,7 @@ function icon(string $name): string {
         <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Tracked Keywords <span class="panel-sub" id="seoKwCount">top 10 · Iran intent</span></span></div>
         <div class="panel-body" style="overflow-x:auto">
           <table class="tbl">
-            <thead><tr><th>Keyword</th><th>Current</th><th>Δ</th><th>Best</th><th>Points</th><th>Last measured</th><th></th></tr></thead>
+            <thead><tr><th>Keyword</th><th>Latest observed</th><th>Δ</th><th>Best</th><th>Points</th><th>Last observed</th><th></th></tr></thead>
             <tbody id="seoRankTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
@@ -4843,7 +4843,8 @@ views.seoranks = {
       this.renderOverview();
       this.renderInputs();
       this.renderGsc(d.gsc || {});
-      $('seoKwCount').textContent = this.data.length + ' tracked · Iran intent';
+      $('seoKwCount').textContent = this.data.length + ' tracked · GSC queries + targets';
+      $('seoKwCount').title = 'No query data means Google has not returned a measurable query row; it does not prove the page is unindexed or outside the top 100.';
     } catch(e) { toast('SEO ranks: '+e.message,'error'); }
   },
   // GSC-home-page-style overview: total Clicks/Impressions/CTR/Avg Position
@@ -4861,7 +4862,7 @@ views.seoranks = {
     $('seoImpressions').textContent = sumImp.toLocaleString();
     $('seoCtr').textContent         = sumImp ? (sumClk/sumImp*100).toFixed(1)+'%' : '—';
     $('seoAvgPos').textContent      = avgPos!=null ? '#'+avgPos.toFixed(1) : '—';
-    $('seoOverviewSub').textContent = rows.length ? `${rows.length} day(s) tracked` : 'no data yet';
+    $('seoOverviewSub').textContent = rows.length ? `${rows.length} day(s) · property totals incl. anonymized queries` : 'no data yet';
 
     const empty = $('seoOverviewEmpty'), canvas = $('seoOverviewChart');
     if (this.overviewChart) { try{this.overviewChart.destroy();}catch(e){} this.overviewChart=null; }
@@ -4894,10 +4895,10 @@ views.seoranks = {
   },
   renderGsc(g) {
     const st = $('gscStatus'), site = $('gscSite');
-    if (site && !site.value) site.value = g.site_url || 'https://setalink.no/';
+    if (site && !site.value) site.value = g.site_url || 'sc-domain:realgram.no';
     $('gscSetup').style.display = g.key_present ? 'none' : 'block';
     if (!g.key_present) { st.textContent = 'not connected'; st.style.color='#f59e0b'; }
-    else { st.textContent = 'connected' + (g.last_sync ? ' · last sync '+g.last_sync : ' · never synced'); st.style.color='var(--muted)'; }
+    else { st.textContent = (g.last_error ? 'SYNC ERROR · '+g.last_error : 'connected') + (g.last_sync ? ' · last successful sync '+g.last_sync+' UTC' : ' · never synced') + (g.window_end ? ' · finalized data through '+g.window_end : ''); st.style.color=g.last_error?'#ef4444':'var(--muted)'; }
   },
   async saveGscConfig() {
     const u = ($('gscSite').value||'').trim(); if(!u) return;
@@ -4932,7 +4933,7 @@ views.seoranks = {
         <td dir="auto" style="font-weight:600">${esc(k.keyword)}</td>
         <td>${fmtPos(k.latest)}</td><td>${dcell}</td>
         <td>${fmtPos(k.best)}</td><td>${k.points||0}</td>
-        <td class="mobile-hide" style="font-size:.75rem;color:var(--muted)">${esc(k.last_at||'never')}</td>
+        <td class="mobile-hide" style="font-size:.75rem;color:var(--muted)">${esc(k.last_at||'No query data in GSC')}</td>
         <td><button class="btn btn-sm btn-danger" onclick="views.seoranks.deleteKeyword('${esc(k.keyword)}')" title="Stop tracking this keyword">${icon_str('trash')}</button></td>
       </tr>`;
     }).join('') : '<tr><td colspan="7" class="tbl-empty">No keywords tracked</td></tr>';

@@ -122,73 +122,86 @@ function gsc_query(string $token, string $siteUrl, array $body): array {
     return $data['rows'] ?? [];
 }
 
-// Pull the last ~14 days of per-day, per-query position data and write real
+// Refresh 90 finalized days of per-day, per-query position data and write real
 // snapshots for every tracked keyword. Returns a summary (for the admin UI).
 function gsc_sync(PDO $db): array {
     seo_ranks_init($db);
-    $siteUrl = gsc_setting($db, 'gsc_site_url', null, 'https://setalink.no/');
-    $token   = gsc_access_token($db);
-
-    // GSC data lags ~2 days; pull a 14-day trailing window.
-    $end   = date('Y-m-d', time() - 2 * 86400);
-    $start = date('Y-m-d', time() - 16 * 86400);
-    $rows  = gsc_query($token, $siteUrl, [
-        'startDate'  => $start,
-        'endDate'    => $end,
-        'dimensions' => ['date', 'query'],
-        'rowLimit'   => 25000,
-        'type'       => 'web',
-    ]);
-
-    // Tracked keyword set (normalized for matching).
-    $tracked = [];
-    foreach ($db->query("SELECT DISTINCT keyword FROM keyword_ranks")->fetchAll(PDO::FETCH_COLUMN) as $kw) {
-        $tracked[gsc_norm($kw)] = $kw;
-    }
-
-    // Clear existing GSC rows in this window so re-syncs don't duplicate.
-    $db->prepare("DELETE FROM keyword_ranks WHERE source='gsc' AND date(captured_at) BETWEEN ? AND ?")
-       ->execute([$start, $end]);
-
-    $ins = $db->prepare("INSERT INTO keyword_ranks (keyword,lang,position,impressions,clicks,source,captured_at)
-                         VALUES (?,?,?,?,?, 'gsc', ?)");
-    $updatedDays = 0; $matchedKw = [];
-    $untracked = []; // query => impressions (to suggest new keywords)
-    foreach ($rows as $r) {
-        $date = $r['keys'][0] ?? '';
-        $q    = $r['keys'][1] ?? '';
-        if ($q === '') continue;
-        $norm = gsc_norm($q);
-        if (isset($tracked[$norm])) {
-            $ins->execute([$tracked[$norm], 'fa', round((float)$r['position'], 1),
-                           (int)round($r['impressions'] ?? 0), (int)round($r['clicks'] ?? 0),
-                           $date . ' 12:00:00']);
-            $updatedDays++;
-            $matchedKw[$tracked[$norm]] = true;
-        } else {
-            $untracked[$q] = ($untracked[$q] ?? 0) + (int)round($r['impressions'] ?? 0);
+    $db->exec('PRAGMA busy_timeout=15000');
+    $db->exec('CREATE TABLE IF NOT EXISTS gsc_daily (
+        site_url TEXT NOT NULL, date TEXT NOT NULL, clicks INTEGER NOT NULL,
+        impressions INTEGER NOT NULL, position REAL, PRIMARY KEY(site_url,date))');
+    $siteUrl = gsc_setting($db, 'gsc_site_url', null, 'sc-domain:realgram.no');
+    gsc_setting($db, 'gsc_last_attempt', gmdate('Y-m-d H:i:s'));
+    try {
+        $token = gsc_access_token($db);
+        $end = gmdate('Y-m-d', time() - 3 * 86400);
+        $start = gmdate('Y-m-d', time() - 92 * 86400);
+        $rows = [];
+        for ($offset=0; ; $offset+=25000) {
+            $page = gsc_query($token, $siteUrl, [
+                'startDate'=>$start, 'endDate'=>$end, 'dimensions'=>['date','query'],
+                'rowLimit'=>25000, 'startRow'=>$offset, 'type'=>'web', 'dataState'=>'final']);
+            $rows = array_merge($rows, $page);
+            if (count($page)<25000) break;
         }
+        // Query rows exclude anonymized queries: obtain property totals separately.
+        $daily = gsc_query($token, $siteUrl, [
+            'startDate'=>$start, 'endDate'=>$end, 'dimensions'=>['date'],
+            'type'=>'web', 'dataState'=>'final', 'aggregationType'=>'byProperty']);
+        $tracked=[];
+        foreach ($db->query('SELECT keyword,lang FROM keyword_ranks GROUP BY keyword')->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $tracked[gsc_norm($r['keyword'])]=[$r['keyword'],$r['lang']];
+        }
+        // Replace only after every Google request succeeds; roll back on any write error.
+        $db->beginTransaction();
+        $db->prepare("DELETE FROM keyword_ranks WHERE source='gsc' AND date(captured_at) BETWEEN ? AND ?")->execute([$start,$end]);
+        $ins=$db->prepare("INSERT INTO keyword_ranks (keyword,lang,position,impressions,clicks,source,captured_at) VALUES (?,?,?,?,?,'gsc',?)");
+        $grouped=[]; $discovered=[];
+        foreach ($rows as $r) {
+            $date=$r['keys'][0]??''; $q=$r['keys'][1]??'';
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || $q==='') continue;
+            $norm=gsc_norm($q);
+            if (!isset($tracked[$norm])) {
+                $tracked[$norm]=[$q,preg_match('/[\x{0600}-\x{06ff}]/u',$q)?'fa':'en'];
+                $discovered[$q]=true;
+            }
+            $key=$date."\0".$norm;
+            if (!isset($grouped[$key])) $grouped[$key]=['date'=>$date,'norm'=>$norm,'impressions'=>0,'clicks'=>0,'weighted'=>0.0];
+            $impressions=(int)($r['impressions']??0);
+            $grouped[$key]['impressions']+=$impressions;
+            $grouped[$key]['clicks']+=(int)($r['clicks']??0);
+            $grouped[$key]['weighted']+=(float)($r['position']??0)*$impressions;
+        }
+        $matched=[];
+        foreach ($grouped as $r) {
+            if ($r['impressions']<=0) continue;
+            [$keyword,$lang]=$tracked[$r['norm']];
+            $ins->execute([$keyword,$lang,round($r['weighted']/$r['impressions'],1),$r['impressions'],$r['clicks'],$r['date'].' 12:00:00']);
+            $matched[$keyword]=true;
+        }
+        $db->prepare('DELETE FROM gsc_daily WHERE site_url=? AND date BETWEEN ? AND ?')->execute([$siteUrl,$start,$end]);
+        $put=$db->prepare('INSERT INTO gsc_daily (site_url,date,clicks,impressions,position) VALUES (?,?,?,?,?)');
+        foreach ($daily as $r) $put->execute([$siteUrl,$r['keys'][0],(int)$r['clicks'],(int)$r['impressions'],(float)$r['position']]);
+        gsc_setting($db,'gsc_window_start',$start);
+        gsc_setting($db,'gsc_window_end',$end);
+        gsc_setting($db,'gsc_last_sync',gmdate('Y-m-d H:i:s'));
+        gsc_setting($db,'gsc_last_error','');
+        $db->commit();
+        return ['ok'=>true,'site_url'=>$siteUrl,'window'=>"$start … $end",
+            'rows'=>count($rows),'snapshots'=>count($grouped),'keywords_hit'=>count($matched),
+            'discovered'=>array_keys($discovered),'top_untracked'=>[]];
+    } catch (\Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        try { gsc_setting($db,'gsc_last_error',substr($e->getMessage(),0,500)); } catch (\Throwable $ignored) {}
+        throw $e;
     }
-    arsort($untracked);
-    $topUntracked = array_slice(array_map(
-        fn($k, $v) => ['query' => $k, 'impressions' => $v], array_keys($untracked), $untracked), 0, 15);
-
-    gsc_setting($db, 'gsc_last_sync', date('Y-m-d H:i:s'));
-    return [
-        'ok'              => true,
-        'site_url'        => $siteUrl,
-        'window'          => "$start … $end",
-        'rows'            => count($rows),
-        'snapshots'       => $updatedDays,
-        'keywords_hit'    => count($matchedKw),
-        'top_untracked'   => $topUntracked,
-    ];
 }
 
 // Normalize a query/keyword for matching: trim, collapse spaces, drop ZWNJ,
 // lowercase (Latin). Persian keywords match despite minor whitespace differences.
 function gsc_norm(string $s): string {
     $s = str_replace(["\u{200c}", "\u{200f}", "\u{200e}"], ['', '', ''], $s); // ZWNJ + RTL/LTR marks
+    $s = str_replace(['ي','ك'], ['ی','ک'], $s);
     $s = preg_replace('/\s+/u', ' ', trim($s));
     // mb_strtolower only matters for Latin queries; Persian has no case. Fall
     // back to ASCII strtolower when mbstring is unavailable.
