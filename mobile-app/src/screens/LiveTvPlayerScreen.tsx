@@ -22,7 +22,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Dimensions, StatusBar, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
-import Video, { OnLoadData, OnBufferData, VideoRef } from 'react-native-video';
+import Video, { OnLoadData, OnBufferData, OnVideoErrorData, VideoRef } from 'react-native-video';
 import Orientation from 'react-native-orientation-locker';
 import KeepAwake from 'react-native-keep-awake';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +32,7 @@ import { useLiveTvLocalStore } from '../stores/liveTvLocalStore';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { getSsoToken } from '../services/ssoService';
+import { trackEvent } from '../services/analytics';
 import {
   getChannel, reportChannel, addAccountFavorite, removeAccountFavorite,
   LiveTvChannel,
@@ -46,7 +47,7 @@ interface Props {
 type PlayerError = 'timeout' | 'unsupported' | 'unavailable' | 'geo_blocked' | 'unknown';
 
 const CONTROLS_HIDE_DELAY_MS = 3500;
-const LOAD_TIMEOUT_MS = 15_000;
+const LOAD_TIMEOUT_MS = 30_000;
 
 export function LiveTvPlayerScreen({ channelId: initialId, channelIds, onBack }: Props) {
   const { t, isRTL } = useT();
@@ -63,10 +64,12 @@ export function LiveTvPlayerScreen({ channelId: initialId, channelIds, onBack }:
   const [error, setError] = useState<PlayerError | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [telegramId, setTelegramId] = useState('');
+  const [attempt, setAttempt] = useState(0);
 
   const videoRef = useRef<VideoRef>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestGeneration = useRef(0);
 
   // Landscape + keep-awake for the lifetime of this screen only.
   useEffect(() => {
@@ -84,23 +87,36 @@ export function LiveTvPlayerScreen({ channelId: initialId, channelIds, onBack }:
     if (deviceId) getSsoToken(deviceId, true).then((s) => setTelegramId(s.telegram_id)).catch(() => {});
   }, [deviceId]);
 
-  const loadChannel = useCallback(async (id: string) => {
+  useEffect(() => {
+    let active = true;
+    requestGeneration.current++;
+    // Unmount the previous source before fetching another channel. Retrying
+    // also starts a fresh native player, even when the URL has not changed.
+    setChannel(null);
     setLoading(true);
     setError(null);
+    setPaused(false);
     if (loadTimer.current) clearTimeout(loadTimer.current);
-    loadTimer.current = setTimeout(() => setError((e) => e ?? 'timeout'), LOAD_TIMEOUT_MS);
-
-    const c = await getChannel(id);
-    if (!c) {
-      setError('unavailable');
-      setLoading(false);
-      return;
-    }
-    setChannel(c);
-    recordWatched(id);
-  }, [recordWatched]);
-
-  useEffect(() => { loadChannel(channelId); }, [channelId, loadChannel]);
+    getChannel(channelId).then((c) => {
+      if (!active) return;
+      if (!c) {
+        setError('unavailable');
+        setLoading(false);
+        return;
+      }
+      setChannel(c);
+      // Give the stream its own loading window after the API has returned.
+      // Previously the 15-second timer included up to 10 seconds of API time.
+      loadTimer.current = setTimeout(() => {
+        if (active) { setLoading(false); setError('timeout'); }
+      }, LOAD_TIMEOUT_MS);
+    });
+    return () => {
+      active = false;
+      requestGeneration.current++;
+      if (loadTimer.current) clearTimeout(loadTimer.current);
+    };
+  }, [channelId, attempt]);
 
   const resetHideTimer = useCallback(() => {
     setControlsVisible(true);
@@ -117,13 +133,15 @@ export function LiveTvPlayerScreen({ channelId: initialId, channelIds, onBack }:
     if (loadTimer.current) clearTimeout(loadTimer.current);
     setLoading(false);
     setError(null);
-  }, []);
+    recordWatched(channelId);
+    trackEvent('LIVE_TV_PLAYBACK_READY', deviceId, { channel_id: channelId });
+  }, [recordWatched, channelId, deviceId]);
 
   const handleBuffer = useCallback((data: OnBufferData) => {
     setLoading(data.isBuffering);
   }, []);
 
-  const handleError = useCallback(() => {
+  const handleError = useCallback((data: OnVideoErrorData) => {
     if (loadTimer.current) clearTimeout(loadTimer.current);
     setLoading(false);
     // react-native-video's error payload shape varies a lot by platform/
@@ -131,8 +149,14 @@ export function LiveTvPlayerScreen({ channelId: initialId, channelIds, onBack }:
     // messages rather than surfacing whatever raw code/domain comes back
     // (spec §10: "Ikke vis rå stack traces, serverfeil eller tekniske
     // unntak til brukeren").
-    setError('unsupported');
-  }, []);
+    const code = String(data.error?.errorCode ?? data.error?.code ?? 'unknown');
+    // Keep diagnostic codes without sending stream URLs, tokens or raw
+    // exception messages. Network failures are not codec failures.
+    trackEvent('LIVE_TV_PLAYBACK_ERROR', deviceId, { channel_id: channelId, code });
+    // react-native-video prefixes Android's four-digit Media3 code with 2.
+    const raw = Number(/^2\d{4}$/.test(code) ? code.slice(1) : code);
+    setError(raw === 2002 ? 'timeout' : raw >= 2000 && raw < 3000 ? 'unavailable' : raw >= 3000 && raw < 5000 ? 'unsupported' : 'unknown');
+  }, [channelId, deviceId]);
 
   const goToOffset = useCallback((offset: number) => {
     const idx = channelIds.indexOf(channelId);
@@ -141,7 +165,7 @@ export function LiveTvPlayerScreen({ channelId: initialId, channelIds, onBack }:
     setChannelId(channelIds[nextIdx]);
   }, [channelId, channelIds]);
 
-  const handleRetry = useCallback(() => { loadChannel(channelId); }, [channelId, loadChannel]);
+  const handleRetry = useCallback(() => { setAttempt((n) => n + 1); }, []);
 
   const handleFavorite = useCallback(async () => {
     toggleFavorite(channelId);
@@ -166,20 +190,22 @@ export function LiveTvPlayerScreen({ channelId: initialId, channelIds, onBack }:
 
   const favorited = isFavorite(channelId);
   const screenW = Dimensions.get('window').width;
+  const videoGeneration = requestGeneration.current;
 
   return (
     <View style={styles.screen}>
       {channel && !error && (
         <Video
+          key={`${channel.id}:${attempt}`}
           ref={videoRef}
           source={{ uri: channel.stream_url }}
           style={StyleSheet.absoluteFillObject}
           resizeMode="contain"
           paused={paused}
           muted={muted}
-          onLoad={handleLoad}
-          onBuffer={handleBuffer}
-          onError={handleError}
+          onLoad={(data) => { if (requestGeneration.current === videoGeneration) handleLoad(data); }}
+          onBuffer={(data) => { if (requestGeneration.current === videoGeneration) handleBuffer(data); }}
+          onError={(data) => { if (requestGeneration.current === videoGeneration) handleError(data); }}
           // Khabat, 2026-08-02: "kan tv kanalen som spiller fortsette i
           // popup vindu mens jeg går ut av siden eller appen? slik som
           // netflix har det" — native OS Picture-in-Picture, not an

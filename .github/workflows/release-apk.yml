@@ -60,9 +60,9 @@ jobs:
         working-directory: mobile-app
         run: npm install
 
-      - name: Test VPN recovery
+      - name: Test VPN recovery and Live TV
         working-directory: mobile-app
-        run: npm test -- --runInBand src/__tests__/vpnStoreRecovery.test.ts src/__tests__/connectionMachine.test.ts src/__tests__/useVpnStatsTrafficStall.test.tsx
+        run: npm test -- --runInBand src/__tests__/vpnStoreRecovery.test.ts src/__tests__/connectionMachine.test.ts src/__tests__/useVpnStatsTrafficStall.test.tsx src/__tests__/liveTvService.test.ts src/__tests__/liveTvPlayer.test.tsx
 
       # ── Android build setup ─────────────────────────────────────────────────
       - name: Download Gradle wrapper jar

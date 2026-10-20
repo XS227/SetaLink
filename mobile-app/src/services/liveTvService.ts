@@ -128,48 +128,53 @@ function hardTimeout<T>(promise: Promise<T>, path: string): Promise<T> {
 async function getJson<T>(path: string): Promise<T | null> {
   const startedAt = Date.now();
   reportFetchStage('dispatched', path);
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const res = await hardTimeout(fetch(`${BASE}${path}`, { signal: controller.signal }), path);
-    clearTimeout(tid);
-    if (!res.ok) {
-      reportFetchFailure(path, `http_${res.status}`);
-      return null;
-    }
-    const json = await res.json();
-    if (json?.status !== 1) {
-      reportFetchFailure(path, 'bad_status_field');
-      return null;
-    }
+    // Headers can arrive while the body stalls. Bound the entire request,
+    // including JSON decoding, so channel/player screens always settle.
+    const json = await hardTimeout((async () => {
+      const res = await fetch(`${BASE}${path}`, { signal: controller.signal });
+      if (!res.ok) throw new Error(`http_${res.status}`);
+      const body = await res.json();
+      if (body?.status !== 1) throw new Error('bad_status_field');
+      return body;
+    })(), path);
     reportFetchStage('ok', path, { ms: Date.now() - startedAt });
     return json as T;
   } catch (err) {
     reportFetchFailure(path, err instanceof Error ? `${err.name}:${err.message}`.slice(0, 200) : 'unknown_error');
     return null;
+  } finally {
+    clearTimeout(tid);
+    controller.abort();
   }
 }
 
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T | null> {
   const startedAt = Date.now();
   reportFetchStage('dispatched', path);
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const res = await hardTimeout(fetch(`${BASE}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    }), path);
-    clearTimeout(tid);
-    if (!res.ok) reportFetchFailure(path, `http_${res.status}`);
-    const json = await res.json();
+    const json = await hardTimeout((async () => {
+      const res = await fetch(`${BASE}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`http_${res.status}`);
+      return res.json();
+    })(), path);
     reportFetchStage('ok', path, { ms: Date.now() - startedAt });
     return json as T;
   } catch (err) {
     reportFetchFailure(path, err instanceof Error ? `${err.name}:${err.message}`.slice(0, 200) : 'unknown_error');
     return null;
+  } finally {
+    clearTimeout(tid);
+    controller.abort();
   }
 }
 
