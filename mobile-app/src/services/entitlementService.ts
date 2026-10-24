@@ -320,6 +320,11 @@ export interface DirectMessage {
    *  lookup keyed by peerDevice. Only `list-messages` returns a `peers` map
    *  server-side; threads/search paths fall back to DEFAULT_PEER_BADGE. */
   peerBadge:   PeerBadge;
+  /** Peer's King/Queen pick ('' = none) — picks their default 3D avatar. */
+  peerPersona?: 'king' | 'queen' | '';
+  /** Peer's @handle / display name from device_handles ('' = none). */
+  peerHandle?:  string;
+  peerName?:    string;
 }
 
 /** Max characters per direct message — mirrors MSG_MAX_LEN server-side. */
@@ -346,6 +351,7 @@ type RawDirectMessage = {
   peer_device: string; body: string; read: boolean; created_at: string;
   expire_secs?: number; expires_at?: string | null;
   reactions?: Record<string, number>; my_reaction?: string | null;
+  peer_persona?: string; peer_handle?: string; peer_name?: string;
 };
 
 /** device_id -> badge, one entry per distinct peer — see
@@ -367,6 +373,9 @@ function mapDirectMessage(m: RawDirectMessage, peers?: PeerBadgeMap): DirectMess
     reactions:  m.reactions ?? {},
     myReaction: m.my_reaction ?? null,
     peerBadge:  peers?.[m.peer_device] ?? DEFAULT_PEER_BADGE,
+    peerPersona: m.peer_persona === 'king' || m.peer_persona === 'queen' ? m.peer_persona : '',
+    peerHandle: m.peer_handle ?? '',
+    peerName:   m.peer_name ?? '',
   };
 }
 
@@ -437,6 +446,12 @@ export async function setTyping(deviceId: string, peer: string): Promise<void> {
 export async function getTyping(deviceId: string, peer: string): Promise<boolean> {
   const data = await mobileGet('get-typing', { device_id: deviceId, peer }) as { typing?: boolean };
   return !!data.typing;
+}
+
+/** Publish the King/Queen pick so peers see the matching default avatar
+ *  (server: set-persona → device_personas; '' clears it). */
+export async function setPersonaRemote(deviceId: string, persona: 'king' | 'queen' | null): Promise<void> {
+  await mobilePost('set-persona', { device_id: deviceId, persona: persona ?? '' });
 }
 
 /** Fixed reason set — mirrors MSG_REPORT_REASONS server-side (lib/messaging.php). */

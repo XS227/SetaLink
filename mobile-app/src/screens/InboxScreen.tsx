@@ -31,6 +31,16 @@ import { Logger } from '../utils/logger';
 import { useCallStore } from '../stores/callStore';
 import { CALLING_ENABLED } from '../config/featureFlags';
 
+import UserAvatar from '../components/UserAvatar';
+import DoodleWallpaper from '../components/DoodleWallpaper';
+import { STICKERS, STICKER_IDS, parseSticker, previewBody, stickerToken } from '../utils/stickers';
+
+// Emoji drawer set: everyday reactions first, then the Gold After Dark mood.
+const DRAWER_EMOJIS = [
+  '😂', '😍', '🥰', '😊', '😎', '🤔', '😢', '😮', '🙏', '👍', '👏', '🔥',
+  '❤️', '💛', '✨', '🎉', '🍿', '🎧', '☀️', '🌙', '👑', '💎', '🌹', '🫶',
+];
+
 const REALINK_LOGO = require('../assets/logo_mark.png');
 
 // Thread header overflow-menu fallback anchor, before/without a real
@@ -82,6 +92,8 @@ export function burnRemaining(expiresAt: string, nowMs: number): string {
 
 interface Props {
   onBack: () => void;
+  /** False when Inbox is a tab root (Chats): there is nothing to go back to. */
+  showBack?: boolean;
   /** Deep-link: open straight into this conversation (push-notification tap). */
   initialThreadKey?: string | null;
 }
@@ -93,7 +105,7 @@ interface Props {
  * opens the same chat-bubble view. A push-notification tap deep-links straight
  * into its thread via `initialThreadKey`.
  */
-export function InboxScreen({ onBack, initialThreadKey }: Props) {
+export function InboxScreen({ onBack, showBack = true, initialThreadKey }: Props) {
   const { t } = useT();
   const insets      = useSafeAreaInsets();
 
@@ -154,6 +166,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const [showPeerProfile, setShowPeerProfile] = useState(false);
   const [threadDraft, setThreadDraft] = useState('');
   const [burnSecs, setBurnSecs]   = useState(0);   // composer disappearing-timer
+  const [drawerTab, setDrawerTab] = useState<'emoji' | 'stickers' | null>(null);
   const [nowMs, setNowMs]         = useState(Date.now());
   const [reactingTo, setReactingTo] = useState<number | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -405,15 +418,15 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
     setOpenKey(c.key);
   };
 
-  const sendInThread = async () => {
-    const body = threadDraft.trim();
+  const sendInThread = async (bodyOverride?: string) => {
+    const body = (bodyOverride ?? threadDraft).trim();
     if (!body || !openConvo) return;
     // Support replies address the support account; DM replies address the peer.
     const peer = openConvo.peerUserId || openConvo.peerDevice || '';
     if (!peer) return;
     try {
       await dmSend(deviceId, peer, body, burnSecs);
-      setThreadDraft('');
+      if (bodyOverride === undefined) setThreadDraft('');
     } catch (e: any) {
       Alert.alert('', String(e?.message ?? 'Error'));
     }
@@ -528,19 +541,21 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   // not a guess: a conversation is "node-shaped" exactly when it has no
   // real username at all — buildConversations() falls back to the raw
   // peerDevice string as the title only in that case.
-  const Avatar = ({ support, label, isNode, size = 44 }: { support: boolean; label: string; isNode?: boolean; size?: number }) => (
+  const Avatar = ({ support, label, isNode, size = 44, seedId = '', persona }: {
+    support: boolean; label: string; isNode?: boolean; size?: number;
+    seedId?: string; persona?: 'king' | 'queen' | '';
+  }) => (
     support ? (
       <View style={[styles.avatar, styles.avatarOfficial, { width: size, height: size, borderRadius: size / 2 }]}>
         <Image source={REALINK_LOGO} style={{ width: size * 0.6, height: size * 0.6, resizeMode: 'contain' }} />
       </View>
-    ) : isNode ? (
+    ) : isNode && !persona ? (
       <View style={[styles.avatar, styles.avatarNode, { width: size, height: size, borderRadius: size / 2 }]}>
         <Text style={{ fontSize: size * 0.4 }}>📡</Text>
       </View>
     ) : (
-      <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
-        <Text style={styles.avatarText}>{(label || '?').slice(0, 1).toUpperCase()}</Text>
-      </View>
+      // Real person: their King/Queen default portrait, else their initial.
+      <UserAvatar seedId={seedId || label} persona={persona} label={label} size={size} ring={!!persona} />
     )
   );
 
@@ -549,12 +564,14 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
       <EmberField count={6} />
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn} activeOpacity={0.7} onPress={onBack}
-          hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
-        >
-          <Text style={styles.backIcon}>‹</Text>
-        </TouchableOpacity>
+        {showBack && (
+          <TouchableOpacity
+            style={styles.backBtn} activeOpacity={0.7} onPress={onBack}
+            hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+          >
+            <Text style={styles.backIcon}>‹</Text>
+          </TouchableOpacity>
+        )}
         <Text style={styles.title}>{t('pr.inbox')}</Text>
         <TouchableOpacity
           style={styles.searchBtn}
@@ -603,6 +620,8 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   label={c.title}
                   isNode={!c.peerUserId && !!c.peerDevice}
                   size={48}
+                  seedId={c.peerDevice}
+                  persona={c.peerPersona}
                 />
               </View>
               <Text style={styles.contactName} numberOfLines={1}>{c.title}</Text>
@@ -640,10 +659,10 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
             const preview = !c.latest
               ? t('dm.supportIntro')
               : c.latest.direction === 'out'
-                ? `${t('dm.you')}: ${c.latest.body}`
+                ? `${t('dm.you')}: ${previewBody(c.latest.body, t('dm.sticker'))}`
                 : c.latest.title
-                  ? `${c.latest.title} — ${c.latest.body}`
-                  : c.latest.body;
+                  ? `${c.latest.title} — ${previewBody(c.latest.body, t('dm.sticker'))}`
+                  : previewBody(c.latest.body, t('dm.sticker'));
             return (
               <TouchableOpacity
                 key={c.key}
@@ -653,7 +672,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 onPress={() => openConvoView(c)}
                 onLongPress={() => confirmDeleteThread(c)}
               >
-                <Avatar support={c.support} label={c.title} isNode={!c.support && !c.peerUserId && !!c.peerDevice} />
+                <Avatar support={c.support} label={c.title} isNode={!c.support && !c.peerUserId && !!c.peerDevice} seedId={c.peerDevice} persona={c.peerPersona} />
                 <View style={styles.itemMain}>
                   <View style={styles.itemHeader}>
                     <Text style={[styles.itemTitle, c.unread > 0 && styles.itemTitleUnread]} numberOfLines={1}>
@@ -696,7 +715,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     <Text style={styles.itemTitle} numberOfLines={1}>{r.peerUserId || r.peerDevice}</Text>
                     <Text style={styles.itemDate}>{r.createdAt.slice(5, 16)}</Text>
                   </View>
-                  <Text style={styles.itemBody} numberOfLines={1}>{r.body}</Text>
+                  <Text style={styles.itemBody} numberOfLines={1}>{previewBody(r.body, t('dm.sticker'))}</Text>
                 </View>
               </TouchableOpacity>
             ))}
@@ -762,6 +781,8 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     label={openConvo.title}
                     isNode={!openConvo.support && !openConvo.peerUserId && !!openConvo.peerDevice}
                     size={34}
+                    seedId={openConvo.peerDevice}
+                    persona={openConvo.peerPersona}
                   />
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -919,9 +940,11 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
               )}
 
               {/* Conversation */}
+              <View style={styles.threadScroll}>
+              {!openConvo.support && <DoodleWallpaper />}
               <ScrollView
                 ref={threadScrollRef}
-                style={styles.threadScroll}
+                style={{ flex: 1 }}
                 contentContainerStyle={styles.threadScrollContent}
               >
                 {/* Support thread opens with a pinned intro note (localized). */}
@@ -953,6 +976,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   const burning = (m.expireSecs ?? 0) > 0;
                   const canReact = m.kind === 'dm';
                   const reactionEntries = Object.entries(m.reactions ?? {}).filter(([, n]) => n > 0);
+                  const sticker = m.kind === 'dm' ? parseSticker(m.body) : null;
                   return (
                     <View key={m.key}>
                       <TouchableOpacity
@@ -961,6 +985,12 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                         onLongPress={() => handleMessageLongPress(openConvo, m)}
                         style={[styles.bubbleRow, out ? styles.bubbleRowOut : styles.bubbleRowIn]}
                       >
+                        {sticker ? (
+                          <View style={styles.stickerMsg}>
+                            <Image source={STICKERS[sticker]!} style={styles.stickerImg} accessibilityLabel={t('dm.sticker')} />
+                            <Text style={styles.stickerTime}>{m.createdAt.slice(11, 16)}</Text>
+                          </View>
+                        ) : (
                         <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn, burning && styles.bubbleBurn]}>
                           {!!m.title && <Text style={styles.bubbleTitle}>{m.title}</Text>}
                           <Text style={[styles.bubbleText, out && styles.bubbleTextOut]}>{m.body}</Text>
@@ -986,6 +1016,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                           )}
                           <Text style={[styles.bubbleTime, out && styles.bubbleTimeOut]}>{m.createdAt.slice(11, 16)}</Text>
                         </View>
+                        )}
                       </TouchableOpacity>
 
                       {reactionEntries.length > 0 && (
@@ -1021,6 +1052,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   );
                 })}
               </ScrollView>
+              </View>
 
               {/* Reply input — two-way for both Support and DM threads */}
               <View style={styles.threadInputRow}>
@@ -1034,6 +1066,17 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     {burnSecs > 0 ? `🔥${burnLabel(burnSecs)}` : '⏱'}
                   </Text>
                 </TouchableOpacity>
+                {!openConvo.support && (
+                  <TouchableOpacity
+                    testID="convo-drawer"
+                    style={[styles.burnChip, drawerTab && styles.burnChipOn]}
+                    activeOpacity={0.7}
+                    onPress={() => setDrawerTab(drawerTab ? null : 'stickers')}
+                    accessibilityLabel={t('dm.stickers')}
+                  >
+                    <Text style={styles.burnChipText}>😊</Text>
+                  </TouchableOpacity>
+                )}
                 <TextInput
                   testID="convo-input"
                   style={styles.threadInput}
@@ -1049,11 +1092,61 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   style={[styles.threadSendBtn, (sending || !threadDraft.trim()) && styles.sendBtnDisabled]}
                   activeOpacity={0.85}
                   disabled={sending || !threadDraft.trim()}
-                  onPress={sendInThread}
+                  onPress={() => sendInThread()}
                 >
                   {sending ? <ActivityIndicator color="#241605" size="small" /> : <Text style={styles.threadSendText}>➤</Text>}
                 </TouchableOpacity>
               </View>
+
+              {/* Emoji / Stickers drawer (Gold After Dark: tactile and fun).
+                  GIFs are left out until a real GIF service exists. */}
+              {drawerTab && !openConvo.support && (
+                <View style={styles.drawer}>
+                  <View style={styles.drawerTabs}>
+                    {(['emoji', 'stickers'] as const).map((tab) => (
+                      <TouchableOpacity
+                        key={tab}
+                        style={[styles.drawerTab, drawerTab === tab && styles.drawerTabActive]}
+                        onPress={() => setDrawerTab(tab)}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={[styles.drawerTabText, drawerTab === tab && styles.drawerTabTextActive]}>
+                          {tab === 'emoji' ? t('dm.emoji') : t('dm.stickers')}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {drawerTab === 'emoji' ? (
+                    <View style={styles.emojiGrid}>
+                      {DRAWER_EMOJIS.map((e) => (
+                        <TouchableOpacity
+                          key={e}
+                          style={styles.emojiKey}
+                          activeOpacity={0.6}
+                          onPress={() => setThreadDraft((d) => (d + e).slice(0, DM_MAX_LEN))}
+                        >
+                          <Text style={styles.emojiKeyText}>{e}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : (
+                    <View style={styles.stickerGrid}>
+                      {STICKER_IDS.map((id) => (
+                        <TouchableOpacity
+                          key={id}
+                          style={styles.stickerKey}
+                          activeOpacity={0.7}
+                          disabled={sending}
+                          onPress={() => { setDrawerTab(null); sendInThread(stickerToken(id)); }}
+                          accessibilityLabel={`${t('dm.sticker')} ${id}`}
+                        >
+                          <Image source={STICKERS[id]!} style={styles.stickerKeyImg} />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           )}
         </KeyboardAvoidingView>
@@ -1235,6 +1328,21 @@ const styles = StyleSheet.create({
   reactionPickerBtn: { paddingHorizontal: 4 },
   reactionPickerEmoji: { fontSize: 20 },
   bubbleBurn:    { borderWidth: 1, borderColor: 'rgba(255,140,60,0.5)' },
+  stickerMsg:    { alignItems: 'flex-end' },
+  stickerImg:    { width: 132, height: 132, resizeMode: 'contain' },
+  stickerTime:   { fontSize: 9, fontFamily: Typography.family.mono, color: Colors.text.muted, marginTop: -6 },
+  drawer:        { backgroundColor: Colors.bg.surface, borderTopWidth: 1, borderTopColor: Colors.border.subtle, paddingBottom: Spacing[3] },
+  drawerTabs:    { flexDirection: 'row', justifyContent: 'center', gap: Spacing[2], paddingVertical: Spacing[2] },
+  drawerTab:     { paddingHorizontal: Spacing[4], paddingVertical: 6, borderRadius: Radius.full },
+  drawerTabActive:     { backgroundColor: Colors.gold[400] + '22' },
+  drawerTabText:       { fontSize: Typography.size.sm, color: Colors.text.secondary, fontFamily: Typography.family.body },
+  drawerTabTextActive: { color: Colors.gold[400], fontFamily: Typography.family.heading },
+  emojiGrid:     { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing[2] },
+  emojiKey:      { width: '12.5%', alignItems: 'center', paddingVertical: 8 },
+  emojiKeyText:  { fontSize: 26 },
+  stickerGrid:   { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: Spacing[2] },
+  stickerKey:    { width: 84, height: 84, borderRadius: Radius.lg, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.elevated },
+  stickerKeyImg: { width: 72, height: 72, resizeMode: 'contain' },
   burnNote:      { fontSize: 10, fontFamily: Typography.family.mono, color: '#FF8C3C', marginTop: 3 },
   burnChip:      { height: 46, minWidth: 46, paddingHorizontal: 6, borderRadius: 23, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, alignItems: 'center', justifyContent: 'center' },
   burnChipOn:    { borderColor: '#FF8C3C', backgroundColor: 'rgba(255,140,60,0.12)' },

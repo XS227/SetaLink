@@ -19,11 +19,10 @@
 
 import React, { useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, Image, StyleSheet, Modal, Pressable, Dimensions,
+  View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, Dimensions,
 } from 'react-native';
 import { Colors, Layout, Radius, Shadow, Spacing, Typography } from '../design/tokens';
-import { useIdentityStore }   from '../stores/identityStore';
-import { useProfilePicStore } from '../stores/profilePicStore';
+import MyAvatar from './MyAvatar';
 import { useT } from '../i18n';
 
 const MENU_WIDTH = 200;
@@ -50,9 +49,6 @@ const MENU_ITEMS: MenuItem[] = [
 
 export function TopBar({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const { t } = useT();
-  const avatarEmoji    = useIdentityStore((s) => s.avatarEmoji);
-  const avatarColor    = useIdentityStore((s) => s.avatarColor);
-  const profilePicUrl  = useProfilePicStore((s) => s.url);
 
   const avatarRef = useRef<View>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -94,16 +90,11 @@ export function TopBar({ onNavigate }: { onNavigate: (tab: string) => void }) {
     <View style={styles.bar}>
       <TouchableOpacity
         ref={avatarRef}
-        style={[styles.avatarChip, { borderColor: avatarColor, backgroundColor: avatarColor + '33' }]}
         onPress={openMenu}
         hitSlop={10}
         accessibilityLabel={t('nav.profile')}
       >
-        {profilePicUrl ? (
-          <Image source={{ uri: profilePicUrl }} style={styles.avatarImage} />
-        ) : (
-          <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
-        )}
+        <MyAvatar size={42} />
       </TouchableOpacity>
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>

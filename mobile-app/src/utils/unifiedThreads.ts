@@ -56,6 +56,9 @@ export interface Conversation {
    *  own distinct "official" treatment via `support` and isn't a regular
    *  peer with a referral-earned badge. */
   peerBadge:  PeerBadge;
+  /** DM only — drives the peer's default King/Queen avatar. */
+  peerPersona?: 'king' | 'queen' | '';
+  peerHandle?:  string;
   latest:     ChatMessage | null; // null when Support is still empty
   unread:     number;
   messages:   ChatMessage[];     // ascending (oldest → newest)
@@ -137,13 +140,16 @@ export function buildConversations(
   const dmThreads: Conversation[] = groupDmsByPeer(otherDms).map(th => ({
     key:        th.peerKey,
     kind:       'dm' as const,
-    title:      th.peerUserId || th.peerDevice,
+    // Real name first: display name → @handle → RealGram id → device id.
+    title:      th.latest.peerName || (th.latest.peerHandle ? `@${th.latest.peerHandle}` : '') || th.peerUserId || th.peerDevice,
     support:    false,
     peerDevice: th.peerDevice,
     peerUserId: th.peerUserId,
     // Same value on every message from this peer (server-embedded, see
     // entitlementService.ts) -- th.latest is as good a source as any.
     peerBadge:  th.latest.peerBadge ?? DEFAULT_PEER_BADGE,
+    peerPersona: th.latest.peerPersona ?? '',
+    peerHandle: th.latest.peerHandle ?? '',
     latest:     dmToChat(th.latest),
     unread:     th.unread,
     messages:   th.messages.map(dmToChat),

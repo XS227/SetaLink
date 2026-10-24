@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
+import UserAvatar from '../components/UserAvatar';
 import { AdBanner } from '../components/AdBanner';
 import { BottomNav } from '../components/BottomNav';
 import { useAuthStore }  from '../stores/authStore';
@@ -94,7 +95,13 @@ export function CallsScreen({ onOpenChat }: Props) {
                 accessibilityRole="button"
                 accessibilityLabel={`${e.conversation.title}, ${statusLabel(e)}`}
               >
-                <View style={styles.avatar}><Text style={styles.avatarText}>{initial}</Text></View>
+                <UserAvatar
+                  seedId={e.conversation.peerDevice || e.conversation.title}
+                  persona={e.conversation.peerPersona}
+                  label={initial}
+                  size={44}
+                  color={Colors.violet[400]}
+                />
                 <View style={styles.rowText}>
                   <Text style={[styles.name, missed && { color: CORAL }]} numberOfLines={1}>{e.conversation.title}</Text>
                   <Text style={[styles.status, missed && { color: CORAL }]} numberOfLines={1}>

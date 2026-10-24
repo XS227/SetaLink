@@ -52,6 +52,7 @@ import { SettingsScreen }    from '../screens/SettingsScreen';
 import { BypassAppsScreen }  from '../screens/BypassAppsScreen';
 import { DiagnosticsScreen } from '../screens/DiagnosticsScreen';
 import { BottomNav, NavTab }        from '../components/BottomNav';
+import { ChatsSplit, WideColumn, useIsWide } from '../components/WideLayout';
 import { Toast }                    from '../components/Toast';
 import { BiometricLockScreen }      from '../components/BiometricLockScreen';
 import { PremiumScreen }            from '../screens/PremiumScreen';
@@ -65,12 +66,13 @@ import { claimPendingReferral }  from '../services/deepLinkService';
 import { checkForUpdate, isUpdateSnoozed, snoozeUpdate, downloadUpdate, openUpdateInBrowser } from '../services/updateService';
 import type { UpdateCheckResult } from '../services/updateService';
 import { getStableDeviceId, getDeviceFingerprint, saveStableDeviceId } from '../services/deviceIdentityService';
-import { registerDevice } from '../services/entitlementService';
+import { registerDevice, setPersonaRemote } from '../services/entitlementService';
 import { useInboxStore }  from '../stores/inboxStore';
 import { useDMStore }     from '../stores/dmStore';
 import { BiometricService }      from '../services/biometricService';
 import { getAdapter }            from '../services/vpnBridge';
 import { useAuthStore }          from '../stores/authStore';
+import { useIdentityStore }      from '../stores/identityStore';
 import { useCallStore }          from '../stores/callStore';
 import { CallScreen }            from '../screens/CallScreen';
 import { useSettingsStore }      from '../stores/settingsStore';
@@ -259,6 +261,15 @@ function MainTabs() {
     return () => sub.remove();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Publish the King/Queen pick (default-avatar source for peers) on launch and
+  // whenever it changes. Fire-and-forget; the next change or launch retries.
+  const persona  = useIdentityStore((s) => s.persona);
+  const myDevice = useAuthStore((s) => s.user?.deviceId);
+  useEffect(() => {
+    if (!myDevice) return;
+    setPersonaRemote(myDevice, persona).catch(() => {});
+  }, [myDevice, persona]);
+
   // Global traffic poller — runs at the shell level regardless of which tab is active.
   // Ensures sessionBytes stays up to date for Activity, Profile, and Home displays.
   useEffect(() => {
@@ -411,7 +422,11 @@ const updStyles = StyleSheet.create({
 // ── Tab adapters ──────────────────────────────────────────────────────────────
 
 function HomeAdapter({ navigation, route }: ScreenAdapterProps) {
-  return <HomeScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'home'} onNavigate={makeOnNavigate(navigation)} />;
+  return (
+    <WideColumn>
+      <HomeScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'home'} onNavigate={makeOnNavigate(navigation)} />
+    </WideColumn>
+  );
 }
 
 function ServersAdapter({ navigation, route }: ScreenAdapterProps) {
@@ -459,7 +474,11 @@ function GameAdapter({ navigation }: ScreenAdapterProps) {
 
 function CallsAdapter({ navigation }: ScreenAdapterProps) {
   // Same Stack 'Inbox' + threadKey route the push-notification deep link uses.
-  return <CallsScreen onOpenChat={(threadKey) => navigation.navigate('Inbox', { threadKey })} />;
+  return (
+    <WideColumn>
+      <CallsScreen onOpenChat={(threadKey) => navigation.navigate('Inbox', { threadKey })} />
+    </WideColumn>
+  );
 }
 
 function ChatsAdapter({ navigation }: ScreenAdapterProps) {
@@ -467,7 +486,11 @@ function ChatsAdapter({ navigation }: ScreenAdapterProps) {
   // InboxScreen's own header always renders a back button (it doubles as a
   // Stack-pushed screen for the support/notification deep-link cases) — as a
   // tab there's nothing to "go back" to, so it returns to Home.
-  return <InboxScreen onBack={() => navigation.navigate('Home')} />;
+  const wide = useIsWide();
+  const inbox = <InboxScreen showBack={false} onBack={() => navigation.navigate('Home')} />;
+  // Unfolded Fold / Duo / tablet: Freedom + shortcuts on the left, Inbox right.
+  if (wide) return <ChatsSplit onNavigate={makeOnNavigate(navigation) as (tab: string) => void}>{inbox}</ChatsSplit>;
+  return inbox;
 }
 
 function WalletAdapter({ navigation, route }: ScreenAdapterProps) {
@@ -485,6 +508,7 @@ function ClanAdapter({ navigation }: ScreenAdapterProps) {
   // one) folded in as one secondary card, not the whole screen.
   const { t } = useT();
   return (
+    <WideColumn>
     <RealGramClanScreen
       onOpenStarlink={() => navigation.navigate('Starlink')}
       onInvite={() => {
@@ -494,11 +518,13 @@ function ClanAdapter({ navigation }: ScreenAdapterProps) {
       onOpenClans={() => navigation.navigate('ClanBrowse')}
       onOpenMoneyDesk={() => navigation.navigate('MoneyDesk')}
     />
+    </WideColumn>
   );
 }
 
 function ProfileAdapter({ navigation }: ScreenAdapterProps) {
   return (
+    <WideColumn>
     <RealGramProfileScreen
       onSignOut={() => {
         useAuthStore.getState().logout();
@@ -510,6 +536,7 @@ function ProfileAdapter({ navigation }: ScreenAdapterProps) {
       onOpenSocial={() => navigation.navigate('Social')}
       onOpenEarn={() => navigation.navigate('Earn')}
     />
+    </WideColumn>
   );
 }
 

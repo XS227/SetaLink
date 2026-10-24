@@ -11,6 +11,7 @@ import {
   AVATAR_EMOJIS, AVATAR_COLORS, normalizeHandle, validateHandle,
 } from '../utils/handle';
 import { checkHandleAvailable, reserveHandle } from '../services/handleService';
+import UserAvatar from './UserAvatar';
 
 type AvailState = 'idle' | 'checking' | 'free' | 'taken' | 'local';
 
@@ -26,8 +27,8 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
   const { t } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const {
-    handle, displayName, avatarEmoji, avatarColor, persona,
-    setHandle, setDisplayName, setAvatar, setPersona,
+    handle, displayName, avatarEmoji, avatarColor, persona, avatarMode,
+    setHandle, setDisplayName, setAvatar, setPersona, resetToPortrait,
   } = useIdentityStore();
 
   const [emoji, setEmoji]     = useState(avatarEmoji);
@@ -35,6 +36,7 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
   const [name, setName]       = useState(displayName);
   const [handleText, setHandleText] = useState(handle ?? '');
   const [pickedPersona, setPickedPersona] = useState<Persona>(persona);
+  const [mode, setMode]     = useState<'portrait' | 'emoji'>(avatarMode === 'emoji' ? 'emoji' : 'portrait');
   const [avail, setAvail]   = useState<AvailState>('idle');
   const [saving, setSaving] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,6 +47,7 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
       setEmoji(avatarEmoji); setColor(avatarColor);
       setName(displayName); setHandleText(handle ?? ''); setAvail('idle');
       setPickedPersona(persona);
+      setMode(avatarMode === 'emoji' ? 'emoji' : 'portrait');
     }
   }, [visible]);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -85,7 +88,7 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
   async function onSave() {
     if (!canSave) return;
     setSaving(true);
-    setAvatar(emoji, color);
+    if (mode === 'emoji') setAvatar(emoji, color); else resetToPortrait();
     setDisplayName(name);
     if (pickedPersona !== persona) setPersona(pickedPersona);
     if (!unchanged && !errorKey) {
@@ -106,41 +109,14 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
           <ScrollView showsVerticalScrollIndicator={false}>
             {/* Live preview */}
             <View style={styles.preview}>
-              <View style={[styles.avatarRing, { borderColor: color, backgroundColor: color + '22' }]}>
-                <Text style={styles.avatarEmoji}>{emoji}</Text>
-              </View>
+              <UserAvatar
+                seedId={deviceId || normalized || 'me'} persona={pickedPersona}
+                emoji={emoji} color={color} useEmoji={mode === 'emoji'} size={72}
+              />
               <Text style={styles.previewName} numberOfLines={1}>
                 {name || (normalized ? `@${normalized}` : t('id.you'))}
               </Text>
               {!!normalized && <Text style={styles.previewHandle}>@{normalized}</Text>}
-            </View>
-
-            {/* Avatar emoji */}
-            <Text style={styles.section}>{t('id.avatar')}</Text>
-            <View style={styles.emojiGrid}>
-              {AVATAR_EMOJIS.map((e) => (
-                <TouchableOpacity
-                  key={e}
-                  style={[styles.emojiCell, emoji === e && { borderColor: color, backgroundColor: color + '22' }]}
-                  onPress={() => setEmoji(e)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.emojiCellText}>{e}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Color */}
-            <Text style={styles.section}>{t('id.color')}</Text>
-            <View style={styles.colorRow}>
-              {AVATAR_COLORS.map((c) => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotActive]}
-                  onPress={() => setColor(c)}
-                  activeOpacity={0.7}
-                />
-              ))}
             </View>
 
             {/* Persona (B-20: King or Queen?) */}
@@ -162,6 +138,43 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
                 <Text style={styles.personaEmoji}>👸</Text>
                 <Text style={styles.personaLabel}>{t('ob.persona.queen')}</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Avatar emoji */}
+            <Text style={styles.section}>{t('id.avatar')}</Text>
+            <View style={styles.emojiGrid}>
+              {/* Default = the King/Queen 3D portrait picked above. */}
+              <TouchableOpacity
+                style={[styles.emojiCell, mode === 'portrait' && { borderColor: Colors.gold[400], backgroundColor: Colors.gold[400] + '22' }]}
+                onPress={() => setMode('portrait')}
+                activeOpacity={0.7}
+                accessibilityLabel={t('id.avatarDefault')}
+              >
+                <UserAvatar seedId={deviceId || normalized || 'me'} persona={pickedPersona ?? 'king'} size={36} ring={false} />
+              </TouchableOpacity>
+              {AVATAR_EMOJIS.map((e) => (
+                <TouchableOpacity
+                  key={e}
+                  style={[styles.emojiCell, mode === 'emoji' && emoji === e && { borderColor: color, backgroundColor: color + '22' }]}
+                  onPress={() => { setEmoji(e); setMode('emoji'); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.emojiCellText}>{e}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Color */}
+            <Text style={styles.section}>{t('id.color')}</Text>
+            <View style={styles.colorRow}>
+              {AVATAR_COLORS.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotActive]}
+                  onPress={() => setColor(c)}
+                  activeOpacity={0.7}
+                />
+              ))}
             </View>
 
             {/* Handle */}

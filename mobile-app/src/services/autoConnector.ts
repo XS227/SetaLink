@@ -24,7 +24,7 @@ import { buildXrayConfigJson, buildEmergencyXrayConfigJson } from './xrayConfigB
 import { getLastConnectProbeOk, getLastConnectFailureCategory } from './vpnBridge';
 import { recordSuccess, recordFailure, sortByHistory, getTopProfiles } from './successHistory';
 import { getRemoteConfig, isKillSwitched, invalidateRemoteConfig } from './remoteConfigService';
-import { getSpoofSnisSync, prefetchBundle } from './profileBundleService';
+import { prefetchBundle } from './profileBundleService';
 import { getSelectedAppBypassDomains } from './iranBypassRules';
 import { uploadConnectTelemetry }              from './api/telemetry.api';
 import type { TelemetryEvent, ConnectTelemetryPayload } from './api/telemetry.api';
@@ -142,6 +142,7 @@ export function buildAutoProfiles(
   const baseFlow = creds.flow;
   const baseFp   = creds.fingerprint || 'chrome';
   const basePort = creds.port;
+  const p        = mode === 'iran' ? 'iran' : 'auto';
 
   const reality = (
     id: string, label: string, sni: string,
@@ -168,124 +169,54 @@ export function buildAutoProfiles(
     emergency: true,
   });
 
-  if (mode === 'iran') {
-    // Build ordered SNI list from remote config or static default
-    const iranSnis = sniPriorities ?? [
-      'www.microsoft.com', 'www.bing.com', 'www.apple.com', 'www.samsung.com', 'www.speedtest.net',
-    ];
+  // A Reality node only accepts the SNIs in its own serverNames list; any other
+  // SNI fails the handshake. Every failed attempt costs up to ~90 s of probing
+  // (see CONNECT_TIMEOUT_MS), so candidates the node can actually accept go first:
+  //   1. the node's altProfiles (self-steal SNIs such as static.setai.no, whose
+  //      DNS, IP and certificate all match, so DPI has nothing to flag)
+  //   2. the node's own primary SNI
+  //   3. the CDN edge transports (a different network path entirely)
+  //   4. at most two SNIs from the remote priority list, as a last resort
+  // The old "spoof" SNIs are gone: no node lists them, so they always failed.
+  const profiles: ProfileDef[] = [];
 
-    const profiles: ProfileDef[] = [
-      // Priority 1-2: top SNI on both 443 and current port
-      reality('iran-sni0-443',  `Reality · ${iranSnis[0]} · 443`,         iranSnis[0]!, { port: 443 }),
-      reality('iran-sni0-port', `Reality · ${iranSnis[0]} · ${basePort}`, iranSnis[0]!),
-    ];
+  (creds.altProfiles ?? []).forEach((alt, i) => {
+    const shortName = alt.sni.replace(/^www\./, '').split('.')[0] ?? alt.sni;
+    profiles.push({
+      id:          `${p}-alt-reality-${alt.port}-${i}`,
+      label:       `Reality · ${shortName} · :${alt.port}`,
+      protocol:    'VLESS + Reality',
+      sni:         alt.sni,
+      port:        alt.port,
+      flow:        alt.flow        ?? '',
+      fingerprint: alt.fingerprint ?? baseFp,
+      emergency:   false,
+      credOverride: {
+        uuid:      alt.uuid,
+        publicKey: alt.publicKey,
+        shortId:   alt.shortId,
+        address:   alt.address || addr,
+      },
+    });
+  });
 
-    // Remaining SNIs from priority list
-    for (let i = 1; i < Math.min(iranSnis.length, 5); i++) {
-      const sni = iranSnis[i]!;
-      const fp  = sni.includes('apple') ? 'safari' : baseFp;
-      profiles.push(reality(`iran-sni${i}`, `Reality · ${sni}`, sni, { fp }));
-    }
-
-    // Speedtest with no flow (broader compat)
-    if (!iranSnis.includes('www.speedtest.net')) {
-      profiles.push(reality('iran-speedtest', 'Reality · speedtest.net', 'www.speedtest.net', { flow: '' }));
-    }
-
-    // SNI Spoof profiles — Reality with alternative fake SNIs (stealth mode)
-    // These work because Reality server accepts ANY SNI via x25519 authentication.
-    // DPI sees traffic to "auth.vercel.com" and does not block it.
-    const spoofSnis = getSpoofSnisSync();
-    for (let i = 0; i < Math.min(spoofSnis.length, 4); i++) {
-      const sni = spoofSnis[i]!;
-      profiles.push(reality(`iran-spoof${i}`, `Stealth · ${sni}`, sni, { flow: baseFlow }));
-    }
-
-    // Alt Reality inbounds (Hetzner multi-keypair) — different port/uuid/pubkey
-    if (creds.altProfiles?.length) {
-      for (const alt of creds.altProfiles) {
-        const shortName = alt.sni.replace(/^www\./, '').split('.')[0] ?? alt.sni;
-        profiles.push({
-          id:          `iran-alt-reality-${alt.port}`,
-          label:       `Reality · ${shortName} · :${alt.port}`,
-          protocol:    'VLESS + Reality',
-          sni:         alt.sni,
-          port:        alt.port,
-          flow:        alt.flow        ?? '',
-          fingerprint: alt.fingerprint ?? baseFp,
-          emergency:   false,
-          credOverride: {
-            uuid:      alt.uuid,
-            publicKey: alt.publicKey,
-            shortId:   alt.shortId,
-            address:   alt.address || addr,
-          },
-        });
-      }
-    }
-
-    // Edge transports in priority order: XHTTP → WS → HTTPUpgrade
-    profiles.push(tls('iran-xhttp',  'VLESS + XHTTP · 443',        'VLESS+XHTTP'));
-    profiles.push(tls('iran-ws',     'VLESS + WebSocket · 443',     'VLESS + WebSocket'));
-    profiles.push(tls('iran-httpup', 'VLESS + HTTPUpgrade · 443',   'VLESS+HTTPUpgrade'));
-
-    // Emergency
-    profiles.push(emergency('iran-emrg', 'Emergency · IPv4+MTU1280', iranSnis[0]!));
-    return profiles;
-  }
-
-  // Auto Mode — ordered by remote SNI priorities
-  const autoSnis = sniPriorities ?? [
-    'www.microsoft.com', 'www.apple.com', 'www.bing.com', 'www.samsung.com', 'www.speedtest.net',
+  const fallbackSnis = sniPriorities ?? [
+    'www.microsoft.com', 'www.bing.com', 'www.apple.com', 'www.samsung.com', 'www.speedtest.net',
   ];
+  const nodeSni = creds.sni || fallbackSnis[0]!;
+  profiles.push(reality(`${p}-current`, `Reality · ${nodeSni}`, nodeSni));
 
-  const profiles: ProfileDef[] = [
-    reality('auto-current', 'Reality · current config', creds.sni || autoSnis[0]!),
-  ];
+  profiles.push(tls(`${p}-xhttp`,  'VLESS + XHTTP · 443',      'VLESS+XHTTP'));
+  profiles.push(tls(`${p}-ws`,     'VLESS + WebSocket · 443',  'VLESS + WebSocket'));
+  profiles.push(tls(`${p}-httpup`, 'VLESS + HTTPUpgrade · 443', 'VLESS+HTTPUpgrade'));
 
-  // Alt Reality inbounds (Hetzner multi-keypair: Oracle :8443, Amazon :2052).
-  // Each has its own uuid/publicKey/shortId — credOverride applies them per-profile.
-  if (creds.altProfiles?.length) {
-    for (const alt of creds.altProfiles) {
-      const shortName = alt.sni.replace(/^www\./, '').split('.')[0] ?? alt.sni;
-      profiles.push({
-        id:          `alt-reality-${alt.port}`,
-        label:       `Reality · ${shortName} · :${alt.port}`,
-        protocol:    'VLESS + Reality',
-        sni:         alt.sni,
-        port:        alt.port,
-        flow:        alt.flow        ?? '',
-        fingerprint: alt.fingerprint ?? baseFp,
-        emergency:   false,
-        credOverride: {
-          uuid:      alt.uuid,
-          publicKey: alt.publicKey,
-          shortId:   alt.shortId,
-          address:   alt.address || addr,
-        },
-      });
-    }
-  }
-
-  for (let i = 0; i < Math.min(autoSnis.length, 5); i++) {
-    const sni = autoSnis[i]!;
-    if (sni === creds.sni) continue; // already added as auto-current
+  const extra = fallbackSnis.filter(s => s !== nodeSni).slice(0, 2);
+  extra.forEach((sni, i) => {
     const fp = sni.includes('apple') ? 'safari' : baseFp;
-    profiles.push(reality(`auto-sni${i}`, `Reality · ${sni}`, sni, { fp }));
-  }
+    profiles.push(reality(`${p}-sni${i}`, `Reality · ${sni}`, sni, { fp }));
+  });
 
-  // SNI Spoof profiles for auto mode (stealth fallback)
-  const autoSpoofSnis = getSpoofSnisSync();
-  for (let i = 0; i < Math.min(autoSpoofSnis.length, 3); i++) {
-    const sni = autoSpoofSnis[i]!;
-    profiles.push(reality(`auto-spoof${i}`, `Stealth · ${sni}`, sni, { flow: baseFlow }));
-  }
-
-  // Edge transports in priority order: XHTTP → WS → HTTPUpgrade → emergency
-  profiles.push(tls('auto-xhttp',  'VLESS + XHTTP · 443',        'VLESS+XHTTP'));
-  profiles.push(tls('auto-ws',     'VLESS + WebSocket · 443',     'VLESS + WebSocket'));
-  profiles.push(tls('auto-httpup', 'VLESS + HTTPUpgrade · 443',   'VLESS+HTTPUpgrade'));
-  profiles.push(emergency('auto-emrg', 'Emergency · IPv4+MTU1280', creds.sni || autoSnis[0]!));
+  profiles.push(emergency(`${p}-emrg`, 'Emergency · IPv4+MTU1280', nodeSni));
   return profiles;
 }
 

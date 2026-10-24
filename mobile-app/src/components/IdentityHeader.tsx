@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
 import { useIdentityStore, displayLabel } from '../stores/identityStore';
+import MyAvatar from './MyAvatar';
 import { EditIdentitySheet } from './EditIdentitySheet';
 import { VipBadge } from './VipBadge';
 
@@ -23,7 +24,7 @@ interface Props {
 // the "edit" affordance) opens the identity sheet.
 export function IdentityHeader({ seedId, fallbackId, planLabel, isVip }: Props) {
   const { t } = useT();
-  const { handle, handleState, displayName, avatarEmoji, avatarColor, seedFromId } =
+  const { handle, handleState, displayName, seedFromId } =
     useIdentityStore();
   const [editing, setEditing] = useState(false);
 
@@ -40,9 +41,7 @@ export function IdentityHeader({ seedId, fallbackId, planLabel, isVip }: Props) 
         activeOpacity={0.8}
         onPress={() => setEditing(true)}
       >
-        <View style={[styles.avatarRing, { borderColor: avatarColor, backgroundColor: avatarColor + '22' }]}>
-          <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
-        </View>
+        <MyAvatar size={64} />
 
         <View style={styles.names}>
           <Text style={styles.name} numberOfLines={1}>{name}</Text>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
@@ -29,6 +29,9 @@ interface Props {
 export function BottomNav({ active, onPress }: Props) {
   const { t }  = useT();
   const insets = useSafeAreaInsets();
+  // Unfolded / tablet widths: keep the five tabs a thumb-sized group, centered.
+  const { width } = useWindowDimensions();
+  const wideBar = width >= 600 ? { width: 560, alignSelf: 'center' as const } : null;
 
   const LABELS: Record<NavTab, Parameters<typeof t>[0]> = {
     home:     'nav.connect',
@@ -45,7 +48,7 @@ export function BottomNav({ active, onPress }: Props) {
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom + Spacing[2] }]}>
-      <View style={styles.bar}>
+      <View style={[styles.bar, wideBar]}>
         {TABS.map((tab) => {
           const isActive = tab.key === active;
           return (

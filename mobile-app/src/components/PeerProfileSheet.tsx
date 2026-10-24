@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from './GlassCard';
 import { useT } from '../i18n';
+import UserAvatar from './UserAvatar';
 import { getPeerProfile, PeerProfile } from '../services/ecosystemProfileService';
 
 interface Props {
@@ -61,16 +62,13 @@ export function PeerProfileSheet({ visible, peerDeviceId, onClose }: Props) {
             </View>
           ) : (
             <>
-              <View
-                style={[
-                  styles.avatar,
-                  { backgroundColor: profile?.avatar_color || Colors.bg.elevated },
-                ]}
-              >
-                <Text style={styles.avatarText}>
-                  {profile?.avatar_emoji || displayName.slice(0, 1).toUpperCase() || '?'}
-                </Text>
-              </View>
+              <UserAvatar
+                seedId={peerDeviceId}
+                persona={profile?.persona === 'king' || profile?.persona === 'queen' ? profile.persona : ''}
+                label={displayName}
+                size={84}
+                style={{ alignSelf: 'center' }}
+              />
               <Text style={styles.name} numberOfLines={1}>
                 {displayName || t('inbox.peerProfileUnknown')}
               </Text>

@@ -30,6 +30,7 @@ import { TreasuryTile } from '../components/TreasuryTile';
 import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
+import MyAvatar from '../components/MyAvatar';
 import { useProfilePicStore } from '../stores/profilePicStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useVpnStore } from '../stores/vpnStore';
@@ -126,8 +127,6 @@ export function RealGramProfileScreen({
   // shown here rather than duplicated server-side since it's already the
   // single source of truth the rest of the app (RealGramLinkWebView, etc.)
   // reads from.
-  const avatarEmoji     = useIdentityStore((s) => s.avatarEmoji);
-  const avatarColor     = useIdentityStore((s) => s.avatarColor);
   const persona         = useIdentityStore((s) => s.persona);
   const localHandle     = useIdentityStore((s) => s.handle);
   const localDisplayName = useIdentityStore((s) => s.displayName);
@@ -381,13 +380,7 @@ export function RealGramProfileScreen({
       >
         {/* Identity */}
         <View style={styles.heroRow}>
-          {identity.profile_pic ? (
-            <Image source={{ uri: identity.profile_pic }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: avatarColor || Colors.bg.elevated }]}>
-              <Text style={styles.avatarFallbackText}>{avatarEmoji || displayName.slice(0, 1).toUpperCase()}</Text>
-            </View>
-          )}
+          <MyAvatar size={88} photoUrl={identity.profile_pic || undefined} />
           <View style={{ flex: 1 }}>
             <Text style={styles.displayName} numberOfLines={1}>{displayName}</Text>
             <Text style={styles.levelText}>

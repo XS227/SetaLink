@@ -27,6 +27,11 @@ interface IdentityState {
   avatarEmoji:  string;
   avatarColor:  string;
   persona:      Persona;
+  /**
+   * 'portrait' = show the King/Queen 3D default avatar (2026-10-24 default);
+   * 'emoji' = the user explicitly picked an emoji avatar in the identity sheet.
+   */
+  avatarMode:   'portrait' | 'emoji';
   /** True once the user has explicitly set anything (vs. seeded defaults). */
   customized:   boolean;
 
@@ -36,6 +41,8 @@ interface IdentityState {
   setHandleState:  (state: HandleState) => void;
   setDisplayName:  (name: string) => void;
   setAvatar:       (emoji: string, color: string) => void;
+  /** Go back to the default King/Queen portrait. */
+  resetToPortrait:     () => void;
   /**
    * Sets the King/Queen persona. Also defaults the avatar emoji to the
    * matching crown glyph, but only when the user hasn't already customized
@@ -54,6 +61,7 @@ export const useIdentityStore = create<IdentityState>()(
       avatarEmoji: '🦊',
       avatarColor: '#00E87A',
       persona:     null,
+      avatarMode:  'portrait',
       customized:  false,
 
       seedFromId: (id) => set((s) => {
@@ -78,7 +86,9 @@ export const useIdentityStore = create<IdentityState>()(
         set(() => ({ displayName: displayName.trim().slice(0, 40), customized: true })),
 
       setAvatar: (avatarEmoji, avatarColor) =>
-        set(() => ({ avatarEmoji, avatarColor, customized: true })),
+        set(() => ({ avatarEmoji, avatarColor, avatarMode: 'emoji', customized: true })),
+
+      resetToPortrait: () => set(() => ({ avatarMode: 'portrait' })),
 
       setPersona: (persona) => set((s) => {
         if (s.customized) return { persona };
@@ -88,7 +98,7 @@ export const useIdentityStore = create<IdentityState>()(
 
       reset: () => set(() => ({
         handle: null, handleState: 'local', displayName: '',
-        avatarEmoji: '🦊', avatarColor: '#00E87A', persona: null, customized: false,
+        avatarEmoji: '🦊', avatarColor: '#00E87A', persona: null, avatarMode: 'portrait', customized: false,
       })),
     }),
     {
