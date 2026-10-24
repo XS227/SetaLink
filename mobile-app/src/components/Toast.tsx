@@ -10,13 +10,13 @@ const TYPE_COLOR: Record<ToastType, string> = {
 };
 
 const TYPE_BG: Record<ToastType, string> = {
-  success: 'rgba(0,232,122,0.12)',
+  success: 'rgba(231,199,120,0.12)',
   error:   'rgba(255,68,68,0.12)',
   info:    'rgba(51,153,255,0.12)',
 };
 
 const TYPE_BORDER: Record<ToastType, string> = {
-  success: 'rgba(0,232,122,0.30)',
+  success: 'rgba(231,199,120,0.30)',
   error:   'rgba(255,68,68,0.30)',
   info:    'rgba(51,153,255,0.30)',
 };

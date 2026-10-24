@@ -215,7 +215,7 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
 }
 
 const styles = StyleSheet.create({
-  overlay:      { flex: 1, backgroundColor: 'rgba(3,6,9,0.7)', justifyContent: 'flex-end' },
+  overlay:      { flex: 1, backgroundColor: 'rgba(6,7,9,0.7)', justifyContent: 'flex-end' },
   sheet:        { maxHeight: '90%', backgroundColor: Colors.bg.elevated, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Layout.screenPadding, paddingTop: Spacing[2], paddingBottom: Spacing[2] },
   grabber:      { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border.default, marginBottom: Spacing[3] },
   title:        { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, marginBottom: Spacing[3] },

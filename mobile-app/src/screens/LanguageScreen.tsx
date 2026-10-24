@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   },
   optionActive: {
     borderColor:     Colors.border.glow,
-    backgroundColor: 'rgba(0,232,122,0.05)',
+    backgroundColor: 'rgba(231,199,120,0.05)',
   },
   optionLeft: {
     flexDirection: 'row',

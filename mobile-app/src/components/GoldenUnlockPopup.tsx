@@ -71,7 +71,7 @@ export function GoldenUnlockPopup({ card, onViewCard, onDismiss }: Props) {
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(3,6,9,0.78)', padding: Spacing[6] },
+  overlay: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(6,7,9,0.78)', padding: Spacing[6] },
   card: {
     width: '100%', maxWidth: 340, alignItems: 'center',
     backgroundColor: Colors.bg.surface, borderRadius: Radius['2xl'],

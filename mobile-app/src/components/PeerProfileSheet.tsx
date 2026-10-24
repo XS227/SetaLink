@@ -144,7 +144,7 @@ export function PeerProfileSheet({ visible, peerDeviceId, onClose }: Props) {
 
 const styles = StyleSheet.create({
   overlay:  { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,6,9,0.65)' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6,7,9,0.65)' },
   sheet: {
     backgroundColor: Colors.bg.base, borderTopLeftRadius: Radius['2xl'], borderTopRightRadius: Radius['2xl'],
     padding: Spacing[5], alignItems: 'center', gap: Spacing[2],

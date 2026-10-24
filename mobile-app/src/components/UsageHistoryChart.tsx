@@ -67,7 +67,7 @@ export function UsageHistoryChart({ deviceId, bare }: Props) {
                 <Svg width="100%" height={HEIGHT} viewBox={`0 0 20 ${HEIGHT}`} preserveAspectRatio="none">
                   <Rect
                     x={2} y={HEIGHT - h} width={16} height={h} rx={3}
-                    fill={isToday ? Colors.gold[400] : 'rgba(0, 232, 122, 0.55)'}
+                    fill={isToday ? Colors.gold[400] : 'rgba(231,199,120,0.55)'}
                   />
                 </Svg>
               </View>

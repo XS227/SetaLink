@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   readBadge: { fontSize: 16 },
 
   sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
-  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,6,9,0.65)' },
+  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6,7,9,0.65)' },
   sheet: { maxHeight: '80%', backgroundColor: Colors.bg.base, borderTopLeftRadius: Radius['2xl'], borderTopRightRadius: Radius['2xl'], padding: Spacing[5] },
   sheetKicker: { fontSize: 11, fontFamily: Typography.family.label, color: Colors.gold[400], textTransform: 'uppercase', letterSpacing: 0.6 },
   sheetTitle: { fontSize: 20, fontFamily: Typography.family.heading, color: Colors.text.primary, marginTop: Spacing[1] },

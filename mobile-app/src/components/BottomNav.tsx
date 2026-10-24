@@ -51,13 +51,15 @@ export function BottomNav({ active, onPress }: Props) {
           return (
             <TouchableOpacity
               key={tab.key}
-              style={styles.tab}
+              style={[styles.tab, isActive && styles.tabActive]}
               onPress={() => onPress(tab.key)}
               activeOpacity={0.7}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              accessibilityLabel={t(LABELS[tab.key])}
             >
               <Text style={[styles.icon, isActive && styles.iconActive]}>{tab.icon}</Text>
               <Text style={[styles.label, isActive && styles.labelActive]}>{t(LABELS[tab.key])}</Text>
-              {isActive && <View style={styles.dot} />}
             </TouchableOpacity>
           );
         })}
@@ -84,31 +86,34 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: Spacing[4],
     paddingTop: Spacing[2],
-    backgroundColor: Colors.bg.void,
+    backgroundColor: Colors.bg.base,
     borderTopWidth: 1,
     borderTopColor: Colors.border.subtle,
   },
+  // Gold After Dark: calm charcoal bar, the active tab is the one gold thing.
   bar: {
     flexDirection: 'row',
-    backgroundColor: Colors.bg.elevated,
+    backgroundColor: Colors.bg.surface,
     borderRadius: Radius['2xl'],
     borderWidth: 1,
     borderColor: Colors.border.default,
-    paddingHorizontal: Spacing[4],
+    paddingHorizontal: Spacing[2],
     height: BottomNav.BAR_HEIGHT,
     alignItems: 'center',
   },
   tab: {
     flex: 1,
+    height: BottomNav.BAR_HEIGHT - Spacing[2] * 2,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
+    borderRadius: Radius.xl,
   },
-  // Active-tab color: gold (theme pkg 2026-07-23) — was emerald. This is
-  // the app's single active-nav choke point, on purpose (see A->B(74)).
-  icon:        { fontSize: 19, color: Colors.text.muted },
+  tabActive:   { backgroundColor: Colors.border.goldGlow },
+  // Active-tab color: gold. This is the app's single active-nav choke point,
+  // on purpose (see A->B(74)).
+  icon:        { fontSize: 19, color: Colors.text.secondary },
   iconActive:  { color: Colors.gold[400] },
-  label:       { fontSize: 9, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 0.4, textTransform: 'uppercase' },
-  labelActive: { color: Colors.gold[400] },
-  dot:         { width: 3, height: 3, borderRadius: 2, backgroundColor: Colors.gold[400], position: 'absolute', bottom: -4 },
+  label:       { fontSize: 10, fontFamily: Typography.family.label, color: Colors.text.secondary, letterSpacing: 0.3 },
+  labelActive: { color: Colors.gold[400], fontWeight: '700' },
 });

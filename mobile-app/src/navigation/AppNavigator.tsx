@@ -21,6 +21,7 @@ import { AppState, View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Ale
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
+import { Colors }                     from '../design/tokens';
 
 import { SplashScreen }      from '../screens/SplashScreen';
 import { LanguageScreen }    from '../screens/LanguageScreen';
@@ -384,21 +385,21 @@ function MainTabs() {
 }
 
 const updStyles = StyleSheet.create({
-  banner:         { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: '#0D1828', borderBottomWidth: 1, borderBottomColor: 'rgba(0,232,122,0.25)', paddingHorizontal: 16, paddingTop: 44, paddingBottom: 10, zIndex: 100 },
-  bannerTitle:    { fontSize: 13, fontWeight: '700', color: '#00E87A', marginBottom: 2 },
+  banner:         { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: Colors.bg.surface, borderBottomWidth: 1, borderBottomColor: Colors.border.glow, paddingHorizontal: 16, paddingTop: 44, paddingBottom: 10, zIndex: 100 },
+  bannerTitle:    { fontSize: 13, fontWeight: '700', color: Colors.gold[400], marginBottom: 2 },
   bannerSub:      { fontSize: 11, color: '#8A9BBF', marginBottom: 8 },
   bannerBtns:     { flexDirection: 'row', gap: 8 },
-  bannerBtn:      { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20, backgroundColor: '#00E87A' },
-  bannerBtnText:  { fontSize: 12, fontWeight: '700', color: '#030609' },
+  bannerBtn:      { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20, backgroundColor: Colors.gold[400] },
+  bannerBtnText:  { fontSize: 12, fontWeight: '700', color: Colors.text.inverse },
   bannerDismiss:  { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
   bannerDismissText: { fontSize: 12, color: '#8A9BBF' },
-  forceOverlay:   { flex: 1, backgroundColor: 'rgba(3,6,9,0.95)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  forceCard:      { backgroundColor: '#0D1828', borderRadius: 16, padding: 24, width: '100%', maxWidth: 380, borderWidth: 1, borderColor: 'rgba(255,80,80,0.3)', gap: 12 },
+  forceOverlay:   { flex: 1, backgroundColor: 'rgba(6,7,9,0.95)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  forceCard:      { backgroundColor: Colors.bg.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 380, borderWidth: 1, borderColor: 'rgba(255,80,80,0.3)', gap: 12 },
   forceTitle:     { fontSize: 20, fontWeight: '700', color: '#FF5050', textAlign: 'center' },
   forceBody:      { fontSize: 14, color: '#C8D8F0', textAlign: 'center', lineHeight: 22 },
   forceChange:    { fontSize: 12, color: '#8A9BBF', lineHeight: 20 },
-  forceBtn:       { marginTop: 8, backgroundColor: '#00E87A', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  forceBtnText:   { fontSize: 15, fontWeight: '700', color: '#030609' },
+  forceBtn:       { marginTop: 8, backgroundColor: Colors.gold[400], borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  forceBtnText:   { fontSize: 15, fontWeight: '700', color: Colors.text.inverse },
   forceSecondaryBtn:     { marginTop: 4, borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
   forceSecondaryBtnText: { fontSize: 14, fontWeight: '600', color: '#C8D8F0' },
 });

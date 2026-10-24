@@ -1,41 +1,45 @@
-// RealGram Design System — V1
-// Scandinavian · Futuristic · Minimal · Cinematic
+// RealGram Design System — V1, retuned to Gold After Dark (approved 2026-10-23,
+// docs/design/GOLD_AFTER_DARK.md in Real-Gram/Realgram): ink/charcoal surfaces,
+// champagne gold actions, warm off-white text. Values only — every screen
+// picks the new palette up through these tokens, no layout changes.
 
 export const Colors = {
   // Backgrounds
   bg: {
-    void:    '#030609',   // deepest black
-    base:    '#070D18',   // primary background
-    surface: '#0D1828',   // card background
-    elevated:'#111F35',   // elevated card
-    glass:   'rgba(13, 24, 40, 0.72)', // glassmorphism
-    overlay: 'rgba(3, 6, 9, 0.85)',
+    void:    '#060709',   // deepest black
+    base:    '#090A0E',   // primary background — Gold After Dark ink
+    surface: '#19191E',   // card background — charcoal
+    elevated:'#222228',   // elevated card — raised charcoal
+    glass:   'rgba(25, 25, 30, 0.72)', // glassmorphism
+    overlay: 'rgba(6, 7, 9, 0.85)',
   },
 
   // Borders
   border: {
     subtle:  'rgba(255, 255, 255, 0.05)',
     default: 'rgba(255, 255, 255, 0.08)',
-    // Emerald-based — still used by every screen not yet on the gold theme.
-    glow:    'rgba(0, 232, 122, 0.25)',
-    active:  'rgba(0, 232, 122, 0.5)',
+    // Were emerald-based; champagne gold under Gold After Dark.
+    glow:    'rgba(231, 199, 120, 0.25)',
+    active:  'rgba(231, 199, 120, 0.5)',
     // Gold-based — use on gold-themed screens (theme pkg's `line.default`).
-    goldGlow:   'rgba(255, 196, 120, 0.14)',
-    goldActive: 'rgba(255, 182, 39, 0.5)',
+    goldGlow:   'rgba(231, 199, 120, 0.14)',
+    goldActive: 'rgba(231, 199, 120, 0.5)',
   },
 
-  // Brand: Emerald Green
+  // Brand: Emerald Green — legacy key kept so the 114 existing call sites
+  // still compile, but under Gold After Dark the primary accent is champagne
+  // gold. Connected/presence status uses `status.connected` (mint), not this.
   emerald: {
-    50:  '#EDFFF6',
-    100: '#C5FFE3',
-    200: '#8BFFC9',
-    300: '#45FFAA',
-    400: '#00E87A',  // primary accent
-    500: '#00C966',
-    600: '#00A050',
-    700: '#007A3D',
-    800: '#005429',
-    900: '#002E16',
+    50:  '#FFF8E6',
+    100: '#FFEFC7',
+    200: '#FFE6A1',
+    300: '#F0D58E',
+    400: '#E7C778',  // primary accent — champagne gold
+    500: '#D9B465',
+    600: '#C49349',
+    700: '#8F6A30',
+    800: '#5E451E',
+    900: '#2F220E',
   },
 
   // Brand: Gold — RealGram's new hero color (theme pkg 2026-07-23).
@@ -46,16 +50,16 @@ export const Colors = {
   // "premium accent") shifts to these values automatically; that's the
   // intended first wave of the rebrand, not a bug.
   gold: {
-    50:  '#FFFBF0',
-    100: '#FFF3C4',  // hi
-    200: '#FFE49A',
-    300: '#FFD670',
-    400: '#FFB627',  // mid / primary — matches theme pkg tokens.json color.gold.1
-    500: '#E09A1C',
-    600: '#B8790F',  // lo — matches theme pkg tokens.json color.gold.0
-    700: '#8A5A00',  // coinGold gradient's dark stop (real-coin.js)
-    800: '#5C3C00',
-    900: '#2E1E00',
+    50:  '#FFF8E6',
+    100: '#FFE6A1',  // hi — Gold After Dark button top stop
+    200: '#F6DA94',
+    300: '#EED086',
+    400: '#E7C778',  // mid / primary — Gold After Dark champagne gold
+    500: '#E4BD6E',  // button middle stop
+    600: '#C49349',  // lo — button bottom stop
+    700: '#8F6A30',  // coinGold gradient's dark stop
+    800: '#5E451E',
+    900: '#2F220E',
   },
 
   // Brand: Silver — the other half of the gold/silver mechanic.
@@ -69,8 +73,8 @@ export const Colors = {
 
   // Combo / energy / XP / epic rarity.
   violet: {
-    400: '#7B5CFA',
-    600: '#5B4FE0',
+    400: '#B49AFF',  // Gold After Dark lilac (avatar rings, secondary links)
+    600: '#8F74E8',
   },
 
   // Forge heat / streak / progress warmth.
@@ -88,7 +92,7 @@ export const Colors = {
   // own semantic color per the theme spec (gold is the *brand* hero, this
   // green is a status indicator, e.g. a small "connected" dot/pill).
   green: {
-    400: '#33FFB2',
+    400: '#73DFBC',  // Gold After Dark mint
   },
 
   // Disconnect warning / spend / rival / mythic rarity.
@@ -100,7 +104,7 @@ export const Colors = {
     common:    '#AEB6C6',
     rare:      '#7FE3FF',
     epic:      '#C9BFFF',
-    legendary: '#FFB627',
+    legendary: '#E7C778',
     mythic:    '#FF9E9E',
   },
 
@@ -114,39 +118,39 @@ export const Colors = {
 
   // Semantic
   status: {
-    connected:    '#33FFB2',  // was emerald #00E87A — now the theme pkg's status green
-    connecting:   '#FFB800',
+    connected:    '#73DFBC',  // Gold After Dark mint (presence / connected)
+    connecting:   '#E7C778',
     disconnected: '#FF5A5A',  // matches RealCoin's hold-to-disconnect ring exactly
-    idle:         '#556680',
+    idle:         '#6E6D78',
   },
 
   // Text
   text: {
-    primary:   '#F0F6FF',
-    secondary: '#7A9BC0',
-    muted:     '#3D5570',
-    inverse:   '#030609',
-    accent:    '#00E87A',
+    primary:   '#F5F1E8',  // Gold After Dark warm off-white
+    secondary: '#AAA9B4',
+    muted:     '#77767F',  // inactive but still legible on ink
+    inverse:   '#21170B',  // dark text on gold
+    accent:    '#E7C778',
   },
 
   // Gradients (as stops — use with LinearGradient)
   gradient: {
-    emerald:    ['#00E87A', '#00A050'],
-    emeraldGlow:['#00E87A', '#007A3D', 'transparent'],
-    night:      ['#070D18', '#0D1828'],
-    surface:    ['rgba(13,24,40,0.9)', 'rgba(7,13,24,0.9)'],
+    emerald:    ['#FFE6A1', '#E4BD6E', '#C49349'],  // legacy key → gold button
+    emeraldGlow:['#E7C778', '#8F6A30', 'transparent'],
+    night:      ['#090A0E', '#19191E'],
+    surface:    ['rgba(25,25,30,0.9)', 'rgba(9,10,14,0.9)'],
     glass:      ['rgba(255,255,255,0.07)', 'rgba(255,255,255,0.02)'],
     danger:     ['#FF6B6B', '#CC0000'],
-    premium:    ['#FFB800', '#FF8C00'],
+    premium:    ['#FFE6A1', '#C49349'],
 
     // Gold/silver theme (theme pkg tokens.json `gradient`). coinGold/
     // coinSilver are 3-stop radial gradients (RealCoin's fill) — use with
     // react-native-svg's <RadialGradient>, not <LinearGradient>.
-    coinGold:   ['#FFF3C4', '#FFB627', '#8A5A00'],
+    coinGold:   ['#FFE6A1', '#E4BD6E', '#8F6A30'],
     coinSilver: ['#E8ECF1', '#B7C0CC', '#4B525D'],
-    goldButton: ['#FFF3C4', '#FFB627'],
+    goldButton: ['#FFE6A1', '#E4BD6E', '#C49349'],
     starlink:   ['#33D3FF', '#7FE3FF'],
-    energy:     ['#5B4FE0', '#7B5CFA', '#FFB627', '#FF8A3D'],
+    energy:     ['#8F74E8', '#B49AFF', '#E7C778', '#FF8A3D'],
     // Carved-stone card effect (theme pkg §5): layer these as two thin
     // LinearGradient overlays inside a card — RN has no inset box-shadow,
     // so the "top highlight / bottom depth" look is faked with overlays
@@ -242,7 +246,7 @@ export const Radius = {
 
 export const Shadow = {
   emerald: {
-    shadowColor:   '#00E87A',
+    shadowColor:   '#E7C778',
     shadowOffset:  { width: 0, height: 0 },
     shadowOpacity: 0.35,
     shadowRadius:  24,
@@ -256,7 +260,7 @@ export const Shadow = {
     elevation:     10,
   },
   gold: {
-    shadowColor:   '#D4AF37',
+    shadowColor:   '#E7C778',
     shadowOffset:  { width: 0, height: 0 },
     shadowOpacity: 0.35,
     shadowRadius:  20,
@@ -278,7 +282,7 @@ export const Shadow = {
   },
   // Gold theme glows (theme pkg `shadow.goldGlow`/`starlinkGlow`).
   goldGlow: {
-    shadowColor:   '#FFB627',
+    shadowColor:   '#E7C778',
     shadowOffset:  { width: 0, height: 0 },
     shadowOpacity: 0.35,
     shadowRadius:  24,

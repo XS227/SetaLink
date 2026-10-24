@@ -178,7 +178,7 @@ export function BiometricLockScreen({ visible, onUnlock }: Props) {
 
 const styles = StyleSheet.create({
   container:        { flex: 1, backgroundColor: Colors.bg.base, alignItems: 'center', justifyContent: 'center', gap: Spacing[4] },
-  lockOrb:          { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(0,232,122,0.08)', borderWidth: 2, borderColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center', marginBottom: Spacing[2] },
+  lockOrb:          { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(231,199,120,0.08)', borderWidth: 2, borderColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center', marginBottom: Spacing[2] },
   lockIcon:         { fontSize: 36 },
   title:            { fontSize: 28, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.5 },
   subtitle:         { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.muted },

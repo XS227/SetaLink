@@ -61,7 +61,8 @@ export function GoldButton({ onPress, disabled, style, textStyle, children, acce
         <Defs>
           <LinearGradient id="gb" x1="0" y1="0" x2="1" y2="0">
             <Stop offset="0%" stopColor={Colors.gold[100]} />
-            <Stop offset="100%" stopColor={Colors.gold[400]} />
+            <Stop offset="50%" stopColor={Colors.gold[500]} />
+            <Stop offset="100%" stopColor={Colors.gold[600]} />
           </LinearGradient>
         </Defs>
         <Rect x={0} y={0} width={size.width} height={size.height} rx={Radius.lg} fill="url(#gb)" />

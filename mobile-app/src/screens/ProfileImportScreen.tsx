@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
   importBtnDisabled: { backgroundColor: Colors.bg.elevated, opacity: 0.5 },
   importBtnText: { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.bg.base },
   resultBox: { borderRadius: Radius.md, padding: Spacing[3], borderWidth: 1 },
-  resultOk:  { backgroundColor: 'rgba(0,232,122,0.08)', borderColor: 'rgba(0,232,122,0.25)' },
+  resultOk:  { backgroundColor: 'rgba(231,199,120,0.08)', borderColor: 'rgba(231,199,120,0.25)' },
   resultErr: { backgroundColor: 'rgba(255,80,80,0.08)', borderColor: 'rgba(255,80,80,0.25)' },
   resultText: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono },
   resultTextOk: { color: Colors.emerald[400] },
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
   profileActions: { flexDirection: 'row', gap: Spacing[2] },
   copyBtn:  {
     paddingHorizontal: Spacing[3], paddingVertical: Spacing[1], borderRadius: Radius.full,
-    backgroundColor: 'rgba(0,232,122,0.12)', borderWidth: 1, borderColor: 'rgba(0,232,122,0.3)',
+    backgroundColor: 'rgba(231,199,120,0.12)', borderWidth: 1, borderColor: 'rgba(231,199,120,0.3)',
   },
   copyBtnText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
   deleteBtn: {

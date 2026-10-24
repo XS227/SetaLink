@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
   cardChipImageWrap: { width: '100%', aspectRatio: 1, overflow: 'hidden' },
   cardChipImage: { width: '100%', height: '100%' },
   cardChipImageFallback: { backgroundColor: Colors.bg.elevated },
-  cardChipLockOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,6,9,0.55)', alignItems: 'center', justifyContent: 'center' },
+  cardChipLockOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6,7,9,0.55)', alignItems: 'center', justifyContent: 'center' },
   cardChipLockIcon: { fontSize: 16 },
   cardChipName: { fontSize: 11, fontFamily: Typography.family.heading, color: Colors.text.primary, paddingHorizontal: Spacing[2], paddingVertical: Spacing[2] },
 

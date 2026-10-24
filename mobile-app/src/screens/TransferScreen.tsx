@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
 
   methodRow:     { flexDirection: 'row', gap: Spacing[3] },
   methodChip:    { flex: 1, paddingVertical: Spacing[3], borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, alignItems: 'center' },
-  methodChipActive: { borderColor: Colors.emerald[400], backgroundColor: 'rgba(0,232,122,0.08)' },
+  methodChipActive: { borderColor: Colors.emerald[400], backgroundColor: 'rgba(231,199,120,0.08)' },
   methodText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.secondary },
   methodTextActive: { color: Colors.emerald[400] },
 
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
   reviewDivider: { height: 1, backgroundColor: Colors.border.subtle },
 
   successWrap:   { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Layout.screenPadding, gap: Spacing[3] },
-  successCircle: { width: 88, height: 88, borderRadius: 44, backgroundColor: 'rgba(0,232,122,0.12)', borderWidth: 2, borderColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
+  successCircle: { width: 88, height: 88, borderRadius: 44, backgroundColor: 'rgba(231,199,120,0.12)', borderWidth: 2, borderColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
   successCheck:  { fontSize: 44, color: Colors.emerald[400] },
   successTitle:  { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary },
   successMsg:    { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.secondary },

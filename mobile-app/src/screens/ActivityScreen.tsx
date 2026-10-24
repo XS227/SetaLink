@@ -77,7 +77,7 @@ function Sparkline({ data }: { data: number[] }) {
               width:           BAR_WIDTH,
               height:          h,
               borderRadius:    3,
-              backgroundColor: isHigh ? Colors.emerald[400] : 'rgba(0,232,122,0.25)',
+              backgroundColor: isHigh ? Colors.emerald[400] : 'rgba(231,199,120,0.25)',
             }}
           />
         );
@@ -220,7 +220,7 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
                       <Text style={styles.logProtocol}>{selectedServer.protocol} · {timeLabel(sessionStartedAt!)}</Text>
                     </View>
                   </View>
-                  <View style={[styles.statusPill, { backgroundColor: 'rgba(0,232,122,0.12)', borderColor: 'rgba(0,232,122,0.4)' }]}>
+                  <View style={[styles.statusPill, { backgroundColor: 'rgba(231,199,120,0.12)', borderColor: 'rgba(231,199,120,0.4)' }]}>
                     <Text style={[styles.statusText, { color: Colors.emerald[400] }]}>{t('ac.live')}</Text>
                   </View>
                 </View>
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
     gap:  Spacing[2],
   },
   logCardLive: {
-    borderColor: 'rgba(0,232,122,0.25)',
+    borderColor: 'rgba(231,199,120,0.25)',
   },
   logTop: {
     flexDirection:  'row',

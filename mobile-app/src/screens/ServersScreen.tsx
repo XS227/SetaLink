@@ -290,14 +290,14 @@ const styles = StyleSheet.create({
 
   smartRow:      { gap: Spacing[3], paddingBottom: 4 },
   smartCard:     { width: 130, backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[1] },
-  smartCardActive: { borderColor: Colors.border.active, backgroundColor: 'rgba(0,232,122,0.05)' },
+  smartCardActive: { borderColor: Colors.border.active, backgroundColor: 'rgba(231,199,120,0.05)' },
   smartFlag:     { marginBottom: 4, alignItems: 'center' },
   smartCountry:  { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
   smartCity:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
   smartMeta:     { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   smartPingDot:  { width: 5, height: 5, borderRadius: 3 },
   smartPing:     { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary },
-  smartTag:      { backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 4 },
+  smartTag:      { backgroundColor: 'rgba(231,199,120,0.1)', borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 4 },
   smartTagText:  { fontSize: 9, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.3 },
 
   empty:            { paddingVertical: Spacing[10], alignItems: 'center' },

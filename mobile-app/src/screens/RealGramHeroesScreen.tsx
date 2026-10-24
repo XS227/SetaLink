@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
   gridImageWrap: { width: '100%', aspectRatio: 1, overflow: 'hidden' },
   gridImage: { width: '100%', height: '100%' },
   gridImageFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.elevated },
-  gridLockOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,6,9,0.55)', alignItems: 'center', justifyContent: 'center' },
+  gridLockOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6,7,9,0.55)', alignItems: 'center', justifyContent: 'center' },
   gridLockIcon: { fontSize: 18 },
   gridName:   { fontSize: 12, fontFamily: Typography.family.heading, color: Colors.text.primary, paddingHorizontal: Spacing[2], paddingTop: Spacing[2] },
   gridStatus: { fontSize: 10, fontFamily: Typography.family.mono, paddingHorizontal: Spacing[2], paddingBottom: Spacing[2], paddingTop: 2 },
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
   textMuted:     { color: Colors.text.muted },
 
   sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
-  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,6,9,0.65)' },
+  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6,7,9,0.65)' },
   sheet: { maxHeight: '82%', backgroundColor: Colors.bg.base, borderTopLeftRadius: Radius['2xl'], borderTopRightRadius: Radius['2xl'], padding: Spacing[5] },
   sheetCloseBtn: { marginTop: Spacing[3], alignItems: 'center', paddingVertical: Spacing[2] },
   sheetCloseBtnText: { fontSize: 13, fontFamily: Typography.family.body, color: Colors.text.muted },

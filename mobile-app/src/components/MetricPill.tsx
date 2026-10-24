@@ -35,7 +35,7 @@ const styles = StyleSheet.create({
   },
   accentPill: {
     borderColor: Colors.border.glow,
-    backgroundColor: 'rgba(0,232,122,0.06)',
+    backgroundColor: 'rgba(231,199,120,0.06)',
   },
   value: {
     fontSize: Typography.size.xl,

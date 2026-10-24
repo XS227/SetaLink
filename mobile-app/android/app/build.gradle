@@ -36,8 +36,8 @@ android {
         applicationId "com.setalink"
         minSdk         rootProject.ext.minSdkVersion
         targetSdk      rootProject.ext.targetSdkVersion
-        versionCode    189
-        versionName    "0.9.149"
+        versionCode    193
+        versionName    "0.9.153"
 
         manifestPlaceholders = [appLabel: "@string/app_name"]
 

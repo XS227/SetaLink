@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
   leaderCrown: { fontSize: 12 },
   memberMeta: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 2 },
 
-  sheetOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(3,6,9,0.72)', padding: Spacing[6] },
+  sheetOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(6,7,9,0.72)', padding: Spacing[6] },
   sheetBackdrop: { ...StyleSheet.absoluteFillObject },
   sheetCard: { width: '100%', maxWidth: 340, backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[5], gap: Spacing[3] },
   sheetTitle: { fontSize: 16, fontFamily: Typography.family.heading, color: Colors.text.primary },

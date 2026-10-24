@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
   heroSection:   { alignItems: 'center', gap: Spacing[3], paddingTop: Spacing[4] },
   logoOrb:       {
     width: 72, height: 72, borderRadius: 36,
-    backgroundColor: 'rgba(0,232,122,0.12)',
+    backgroundColor: 'rgba(231,199,120,0.12)',
     borderWidth: 2, borderColor: Colors.emerald[400],
     shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5, shadowRadius: 16, elevation: 8,

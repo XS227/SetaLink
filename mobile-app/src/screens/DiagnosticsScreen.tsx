@@ -537,7 +537,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
               <Text style={styles.cardLabel}>{t('diag.connectionProbeLog')}</Text>
               <View style={{ flexDirection: 'row', gap: Spacing[2] }}>
                 {autoConnect.winningConfig && (
-                  <View style={{ backgroundColor: 'rgba(0,232,122,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
+                  <View style={{ backgroundColor: 'rgba(231,199,120,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
                     <Text style={{ fontSize: 10, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>{t('diag.winner')}</Text>
                   </View>
                 )}
@@ -545,7 +545,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
               </View>
             </View>
             {autoConnect.winningConfig && (
-              <View style={{ backgroundColor: 'rgba(0,232,122,0.06)', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.glow, padding: Spacing[3], marginBottom: Spacing[3] }}>
+              <View style={{ backgroundColor: 'rgba(231,199,120,0.06)', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.glow, padding: Spacing[3], marginBottom: Spacing[3] }}>
                 <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400], marginBottom: 4 }}>{t('diag.selectedRoute')}</Text>
                 <Text style={{ fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: Colors.text.primary }}>{autoConnect.winningConfig.label}</Text>
               </View>
@@ -612,7 +612,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
         <GlassCard>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing[3] }}>
             <Text style={styles.cardLabel}>{t('diag.realInternetTest')}</Text>
-            <View style={{ backgroundColor: 'rgba(0,232,122,0.08)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
+            <View style={{ backgroundColor: 'rgba(231,199,120,0.08)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
               <Text style={{ fontSize: 9, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>1.1.1.1 TRACE</Text>
             </View>
           </View>
@@ -621,7 +621,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
           </Text>
           {traceTestResult && (
             <View style={{
-              backgroundColor: traceTestResult.ok ? 'rgba(0,232,122,0.07)' : 'rgba(255,59,48,0.07)',
+              backgroundColor: traceTestResult.ok ? 'rgba(231,199,120,0.07)' : 'rgba(255,59,48,0.07)',
               borderRadius: Radius.md,
               borderWidth: 1,
               borderColor: traceTestResult.ok ? Colors.border.glow : Colors.status.disconnected + '40',
@@ -665,7 +665,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
         <GlassCard>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing[3] }}>
             <Text style={styles.cardLabel}>{t('diag.tunnelSelfTest')}</Text>
-            <View style={{ backgroundColor: 'rgba(0,232,122,0.08)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
+            <View style={{ backgroundColor: 'rgba(231,199,120,0.08)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
               <Text style={{ fontSize: 9, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>{t('diag.checksCount').replace('{n}', '4')}</Text>
             </View>
           </View>
@@ -749,6 +749,6 @@ const styles = StyleSheet.create({
   throughputBar:  { flex: 1, height: 6, borderRadius: 3, backgroundColor: Colors.bg.elevated, overflow: 'hidden' },
   throughputFill: { height: '100%', borderRadius: 3 },
   throughputVal:  { fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: Colors.text.secondary, width: 80, textAlign: 'right' },
-  exportBtn:      { borderWidth: 1, borderColor: Colors.border.glow, borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', backgroundColor: 'rgba(0,232,122,0.05)' },
+  exportBtn:      { borderWidth: 1, borderColor: Colors.border.glow, borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', backgroundColor: 'rgba(231,199,120,0.05)' },
   exportText:     { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.5 },
 });
