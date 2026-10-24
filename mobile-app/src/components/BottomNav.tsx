@@ -4,22 +4,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
 
-export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile' | 'game' | 'chats' | 'wallet' | 'clan';
+export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile' | 'game' | 'chats' | 'wallet' | 'clan' | 'calls';
 
 type NavItem = { key: NavTab; icon: string };
 
-// Khabat, 2026-07-30: footer rebuilt around the three real pillars — VPN
-// access (Freedom/servers) · Shahnameh learning (game) · community earning
-// (wallet) — plus Home. Chats/Profile/Clan move into TopBar's burger menu
-// (avatar, top-right, every screen) instead of duplicating them here; a
-// screen that's in the menu but not the footer is still fully reachable,
-// same pattern §5.10.1 already used for 'ai'/'activity'. Supersedes
-// §5.10.1's Home·Chats·Freedom·Wallet·Clan·Profile lineup.
+// Gold After Dark (Khabat, 2026-10-24: "do the layout changes too, 5 tabs"):
+// Chats · Calls · Connect · Clan · Profile, the approved design's order.
+// Supersedes the 2026-07-30 Home·Freedom·Shahnameh·Wallet footer — those
+// destinations stay fully reachable through TopBar's burger menu (Connect's
+// header), the same pattern 'ai'/'activity' already used.
 const TABS: NavItem[] = [
+  { key: 'chats',   icon: '💬' },
+  { key: 'calls',   icon: '📞' },
   { key: 'home',    icon: '⬡' },
-  { key: 'servers', icon: '🌐' },
-  { key: 'game',    icon: '⚔' },
-  { key: 'wallet',  icon: '💎' },
+  { key: 'clan',    icon: '👥' },
+  { key: 'profile', icon: '👤' },
 ];
 
 interface Props {
@@ -32,7 +31,7 @@ export function BottomNav({ active, onPress }: Props) {
   const insets = useSafeAreaInsets();
 
   const LABELS: Record<NavTab, Parameters<typeof t>[0]> = {
-    home:     'nav.home',
+    home:     'nav.connect',
     servers:  'nav.freedom',
     ai:       'nav.ai',
     activity: 'nav.activity',
@@ -41,6 +40,7 @@ export function BottomNav({ active, onPress }: Props) {
     chats:    'nav.chats',
     wallet:   'nav.wallet',
     clan:     'nav.clan',
+    calls:    'nav.calls',
   };
 
   return (

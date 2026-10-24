@@ -40,6 +40,7 @@ export type MainTabParamList = {
   Chats:    undefined;
   Wallet:   undefined;
   Clan:     undefined;
+  Calls:    undefined;
 };
 
 export type RootNavigationProp = NativeStackNavigationProp<RootStackParamList>;

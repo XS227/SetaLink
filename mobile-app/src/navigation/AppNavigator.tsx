@@ -55,6 +55,7 @@ import { BottomNav, NavTab }        from '../components/BottomNav';
 import { Toast }                    from '../components/Toast';
 import { BiometricLockScreen }      from '../components/BiometricLockScreen';
 import { PremiumScreen }            from '../screens/PremiumScreen';
+import { CallsScreen }       from '../screens/CallsScreen';
 import { InboxScreen }             from '../screens/InboxScreen';
 import { TransferScreen }          from '../screens/TransferScreen';
 import { WalletScreen }            from '../screens/WalletScreen';
@@ -96,6 +97,7 @@ const SCREEN_TO_TAB: Record<string, NavTab> = {
   Chats:    'chats',
   Wallet:   'wallet',
   Clan:     'clan',
+  Calls:    'calls',
 };
 
 const TAB_TO_SCREEN: Record<NavTab, keyof MainTabParamList> = {
@@ -108,6 +110,7 @@ const TAB_TO_SCREEN: Record<NavTab, keyof MainTabParamList> = {
   chats:    'Chats',
   wallet:   'Wallet',
   clan:     'Clan',
+  calls:    'Calls',
 };
 
 type ScreenAdapterProps = { navigation: any; route: any };
@@ -313,6 +316,7 @@ function MainTabs() {
         <Tab.Screen name="Chats"    component={ChatsAdapter} />
         <Tab.Screen name="Wallet"   component={WalletAdapter} />
         <Tab.Screen name="Clan"     component={ClanAdapter} />
+        <Tab.Screen name="Calls"    component={CallsAdapter} />
       </Tab.Navigator>
 
       {/* Optional update banner — dismissible */}
@@ -451,6 +455,11 @@ function GameAdapter({ navigation }: ScreenAdapterProps) {
       onNavigate={makeOnNavigate(navigation) as (tab: string) => void}
     />
   );
+}
+
+function CallsAdapter({ navigation }: ScreenAdapterProps) {
+  // Same Stack 'Inbox' + threadKey route the push-notification deep link uses.
+  return <CallsScreen onOpenChat={(threadKey) => navigation.navigate('Inbox', { threadKey })} />;
 }
 
 function ChatsAdapter({ navigation }: ScreenAdapterProps) {
